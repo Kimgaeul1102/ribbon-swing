@@ -34,6 +34,11 @@ function activeLayers() {
   return layers.filter((l) => l.characterId === activeCharacterId)
 }
 
+function activeAttachY(): number {
+  const { characters, activeCharacterId } = useSwingStore.getState()
+  return characters.find((c) => c.id === activeCharacterId)?.attachY ?? 0
+}
+
 function nextZIndex(): number {
   const zs = activeLayers().map((l) => l.zIndex)
   return zs.length ? Math.max(...zs) + 1 : 0
@@ -126,7 +131,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const assets = await importAssets(files)
       const { addLayer, kickCharacter, activeCharacterId } = useSwingStore.getState()
       let z = nextZIndex()
-      for (const asset of assets) addLayer(createLayer(asset, z++, activeCharacterId))
+      for (const asset of assets) addLayer(createLayer(asset, z++, activeCharacterId, activeAttachY()))
       if (assets.length) kickCharacter(activeCharacterId)
     },
 
@@ -134,7 +139,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       const asset = get().assets.find((a) => a.id === assetId)
       if (!asset) return
       const { addLayer, kickCharacter, activeCharacterId } = useSwingStore.getState()
-      addLayer(createLayer(asset, nextZIndex(), activeCharacterId))
+      addLayer(createLayer(asset, nextZIndex(), activeCharacterId, activeAttachY()))
       kickCharacter(activeCharacterId)
     },
 
@@ -156,6 +161,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         id: existing?.id ?? newId(),
         name,
         createdAt: existing?.createdAt ?? Date.now(),
+        attachY: activeAttachY(),
         layers: activeLayers().map((l) => ({
           assetId: l.assetId,
           expression: l.expression,
@@ -200,7 +206,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
             ]
           : []
       })
+      // 세트에 저장된 끈 위치를 이 인원에 적용 (예전 세트는 첫 레이어의 회전 기준점 높이로 대신함)
+      const attachY = saved.attachY ?? saved.layers[0]?.pivot.y ?? 0
       useSwingStore.setState((s) => ({
+        characters: s.characters.map((c) => (c.id === activeCharacterId ? { ...c, attachY } : c)),
         layers: [...s.layers.filter((l) => l.characterId !== activeCharacterId), ...layers],
       }))
       useSwingStore.getState().kickCharacter(activeCharacterId)

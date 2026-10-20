@@ -27,7 +27,9 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - `A` = 세기(amplitude, deg, 0~45)
 - `f` = 속도(frequency, Hz, 0.2~2.0)
 - `d` = 감쇠(damping, 0~1). 0이면 영원히 흔들림, 클수록 빨리 멈춤
-- 사용자가 캐릭터를 드래그하거나 "밀기" 버튼을 누르면 `t = 0`으로 리셋하고 다시 시작
+- **밀기는 리셋이 아니라 충격을 더하는 방식**: 레이어마다 감쇠 진동 상태(각도 x, 각속도 v)를 시뮬레이션하고(`oscillator`/`stepSpring`), 밀면 `v += A·ω` (`applyPush`, 지금 움직이는 방향으로, 멈춰 있으면 오른쪽, 속도 상한 있음). 정지 상태에서 한 번 밀면 위 수식과 같은 궤적이고, 흔들리는 중에 또 누르면 초반으로 돌아가지 않고 그 위에 힘이 얹힘
+- **멈추기**: 계속 흔들기를 끄고, 진동에 브레이크(속도·각도 감쇠 1.2초)를 걸고, 예약된 밀기(차례대로 밀기)를 취소 (`stopAt` 변화를 루프가 감지)
+- (마우스 드래그로 밀기는 미구현 — 필요 없다고 해서 뺌)
 - 회전 기준점(`transform-origin`)은 **리본이 캐릭터에 묶인 지점** (기본값: 상단 중앙)
 
 ### 3.2 말랑함 + 아래로 갈수록 (전부 CSS transform — 가벼움)
@@ -38,6 +40,17 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - `wobble`, `sway` 슬라이더 0~1
 - 투명 여백 자르기: 업로드 시 이미지의 불투명 영역(bbox)을 계산해 저장. 한 캐릭터의 레이어 bbox 합집합(`utils/frame.ts`)만 화면에 맞춤. 파일 자체는 안 자르므로 레이어끼리 어긋나지 않음. pivot은 잘린 영역 기준 비율. 캔버스 크기가 서로 다르면 자르지 않음
 - 인원 간격(`spacing`, 0.2~1)은 `utils/layout.ts`가 계산. 줄이면 인원이 가운데로 모임
+
+### 3.2.2 계속 흔들기 (idle)
+- 버튼으로 켜고 끄면 밀지 않아도 잔잔하게 계속 흔들림. 세기 슬라이더 0~20° (`idleStrength`), 속도는 전체 `frequency`의 0.6배
+- `idleAngle(t) = strength · (0.75·sin(w·t+p) + 0.25·sin(1.618·w·t+…)) · breath` — 배수가 아닌 두 주기 + 느린 세기 변화로 기계처럼 반복되지 않음
+- 인원마다 `seedFromId(id)`로 위상이 달라 따로 흔들림. 켜고 끌 때는 세기 비율을 서서히 바꿔 튀지 않음
+- 레이어 target = (밀기 진동 + idle) · amplitudeMul. 레이어의 delay/speedMul이 idle에도 똑같이 적용돼 머리카락 등이 자연스럽게 늦게 따라옴
+
+### 3.2.3 리본 끈 흔들림 / 줌
+- 인원마다 "리본 끈 + 캐릭터" 묶음(`ribbonElements`)이 위쪽 가로대(상단 중앙)를 기준으로 회전 → 끈이 매달린 채 흔들리고 캐릭터는 끈 끝에서 호를 그림. 끈 길이는 `ribbonLength`(px, 슬라이더 0~400, 기본 `DEFAULT_RIBBON_PX`=150). 끈 끝은 그림의 `attachY` 높이(인원별, 0=정수리 ~ 1=맨 아래, 슬라이더 "끈 위치")에 붙고(끈은 그림 뒤로 이어짐), 그 높이가 레이어 회전 기준점 높이(`pivot.y`)이기도 함 — `setAttachY`가 인원 모든 레이어의 pivot.y를 같이 옮김. 길이를 바꿔도 그림 크기는 그대로(크기는 줌으로 조절)
+- 끈 각도 = (인원별 진동 + idle) · `ribbonSwing`(0~1). 캐릭터 전체 방향은 유지되도록 레이어 회전에서 끈 각도를 뺌 (`angle − ribbonAngle`)
+- `zoom`(0.5~1.5): 무대 내용을 위쪽 중앙 기준으로 확대/축소. 배경은 Stage 바로 아래(줌 묶음 바깥)에 두면 줌의 영향을 받지 않음
 
 ### 3.3 레이어별 2차 움직임 (Follow-through)
 각 레이어는 메인 각도를 그대로 쓰지 않고 **지연 + 배율 + 자체 감쇠**를 거친다.
@@ -58,7 +71,7 @@ type Layer = {
 };
 ```
 - 구현은 **스프링 추종**: 매 프레임 `layerAngle += (targetAngle − layerAngle) · stiffness`
-  여기서 `targetAngle`은 레이어 자신의 진자 값: `pendulumAngle((now − start − delay) · speedMul) · amplitudeMul`
+  여기서 `targetAngle`은 레이어 자신의 진동 값: `(osc.x + idle) · amplitudeMul`. 레이어의 `delay`만큼 늦게 충격을 받고, `speedMul`만큼 진동수·감쇠가 빠르거나 느림
 - 프리셋 예시
   - body: delay 0, mul 1.0, stiffness 1.0
   - hair: delay 80, mul 1.4, stiffness 0.15

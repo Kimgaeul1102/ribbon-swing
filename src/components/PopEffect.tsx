@@ -1,6 +1,8 @@
 import { useState, type CSSProperties } from 'react'
+import { useSwingStore } from '../store/useSwingStore'
 
 type PopEffectProps = {
+  attachY: number // 끈이 달린 높이 (그림 높이 비율) — 머리 위치를 따라가려고 씀
   startAt: number // 밀리는 시각 (performance.now, ms) — 차례대로 밀기에서는 미래일 수 있음
 }
 
@@ -21,8 +23,9 @@ const PARTICLES = GLYPHS.map((glyph, i) => {
 })
 
 /** 뿅뿅 효과 — 캐릭터 머리 근처에서 "뿅!"과 반짝이 조각이 튀어나옴 */
-function PopEffect({ startAt }: PopEffectProps) {
+function PopEffect({ startAt, attachY }: PopEffectProps) {
   // 마운트 시점에 한 번만 계산 (이후 리렌더로 애니메이션이 다시 시작되지 않게)
+  const ribbonLength = useSwingStore((s) => s.ribbonLength)
   const [wait] = useState(() => Math.max(0, startAt - performance.now()))
 
   const style = (dx: number, dy: number, delay: number, extra?: CSSProperties): CSSProperties => ({
@@ -37,7 +40,7 @@ function PopEffect({ startAt }: PopEffectProps) {
   } as CSSProperties)
 
   return (
-    <div className="pointer-events-none absolute left-1/2 z-[999]" style={{ top: 'calc(5rem + 10%)' }} aria-hidden>
+    <div className="pointer-events-none absolute left-1/2 z-[999]" style={{ top: `calc(${ribbonLength}px - ${attachY * 70}% + 8%)` }} aria-hidden>
       <span style={style(0, -60, 0, { fontSize: '1.6rem', fontWeight: 800, color: '#ec4899', whiteSpace: 'nowrap' })}>
         뿅!
       </span>

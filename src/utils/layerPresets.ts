@@ -37,6 +37,7 @@ export function createLayer(
   asset: { id: string; name: string; url: string; canvas: Size; bbox: Box },
   zIndex: number,
   characterId: string,
+  attachY = 0, // 이 인원의 끈이 달린 높이 — 새 레이어의 회전 기준점 높이로 씀
 ): Layer {
   return {
     id: newId(),
@@ -50,5 +51,6 @@ export function createLayer(
     zIndex,
     enabled: true,
     ...guessPreset(asset.name),
+    pivot: { x: guessPreset(asset.name).pivot.x, y: attachY },
   }
 }

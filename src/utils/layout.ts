@@ -6,3 +6,6 @@ export function characterColumn(i: number, n: number, spacing: number): { center
   const width = (100 / n) * spacing
   return { center: 50 + (i + 0.5 - n / 2) * width, width }
 }
+
+/** 리본 끈 길이 기본값 (px). 캐릭터는 이 끈 끝(위쪽 가로대에서 이만큼 아래)에 매달림 */
+export const DEFAULT_RIBBON_PX = 150

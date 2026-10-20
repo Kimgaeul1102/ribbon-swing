@@ -86,7 +86,7 @@ function LayerSettings({ layer, frame, onClose }: LayerSettingsProps) {
           {Math.round(layer.pivot.x * 100)}%, {Math.round(layer.pivot.y * 100)}%
         </span>
       </p>
-      <p className="mb-2 text-xs text-gray-400">이미지를 누르거나 끌어서 리본이 묶인 지점을 정하세요.</p>
+      <p className="mb-2 text-xs text-gray-400">이미지를 누르거나 끌어서 회전 기준점을 정하세요. (끈 위치 슬라이더를 움직이면 이 인원 모든 레이어의 기준점 높이가 따라가요)</p>
       <div className="flex justify-center">
         <div
           ref={pickerRef}
@@ -125,7 +125,11 @@ function LayerSettings({ layer, frame, onClose }: LayerSettingsProps) {
       <div className="mt-3 flex justify-between">
         <button
           type="button"
-          onClick={() => updateLayer(layer.id, guessPreset(layer.name))}
+          onClick={() => {
+            const preset = guessPreset(layer.name)
+            // 회전 기준점 높이는 끈이 달린 높이를 유지
+            updateLayer(layer.id, { ...preset, pivot: { x: preset.pivot.x, y: layer.pivot.y } })
+          }}
           className="text-gray-500 hover:text-pink-600"
         >
           이름 기준 기본값으로

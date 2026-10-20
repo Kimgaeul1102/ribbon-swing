@@ -1,11 +1,13 @@
 import { create } from 'zustand'
 import { newId } from '../utils/id'
 import type { Box, Size } from '../utils/trim'
+import { DEFAULT_RIBBON_PX } from '../utils/layout'
 
 export type Character = {
   id: string
   name: string
-  swingStartedAt: number // 이 캐릭터의 진자 t=0 시각 (performance.now, ms)
+  swingStartedAt: number // 이 캐릭터가 마지막으로 밀린 시각 (performance.now, ms) — 차례대로 밀기에서는 미래일 수 있음
+  attachY: number // 리본 끈이 달리는 높이 (그림 높이 비율, 0=정수리 ~ 1=맨 아래). 레이어 회전 기준점의 높이이기도 함
   reactedAt: number // 마지막으로 "밀기"를 받은 시각 (표정 변화/뿅뿅 효과 기준, 0이면 없음)
 }
 
@@ -43,26 +45,35 @@ type SwingState = {
   reactionSec: number // 밀린 표정을 유지하는 시간 (초)
   popEffect: boolean // 뿅뿅 효과 on/off
   trim: boolean // 투명 여백 자동으로 자르기
+  idleOn: boolean // 계속 흔들기 (밀지 않아도 자연스럽게 계속 흔들림)
+  idleStrength: number // 계속 흔들기 세기 (deg, 0~20)
+  ribbonLength: number // 리본 끈 길이 (px, 위쪽 가로대에서 캐릭터까지)
+  ribbonSwing: number // 리본 끈이 흔들리는 정도 (0~1) — 캐릭터 흔들림 중 끈이 맡는 비율
+  zoom: number // 화면 확대/축소 (0.5~1.5)
+  stopAt: number // 마지막으로 "멈추기"를 누른 시각 (performance.now, ms)
   characters: Character[]
   activeCharacterId: string // 레이어 편집 대상
   layers: Layer[]
-  setParam: (key: 'amplitude' | 'frequency' | 'damping' | 'wobble' | 'sway' | 'spacing' | 'pushGap' | 'reactionSec', value: number) => void
+  setParam: (key: 'amplitude' | 'frequency' | 'damping' | 'wobble' | 'sway' | 'spacing' | 'pushGap' | 'reactionSec' | 'idleStrength' | 'ribbonSwing' | 'ribbonLength' | 'zoom', value: number) => void
   pushAll: () => void
   pushSequential: () => void
   setPopEffect: (on: boolean) => void
   setTrim: (on: boolean) => void
+  setIdleOn: (on: boolean) => void
+  stop: () => void
   kickCharacter: (id: string) => void
   addCharacter: () => void
   removeCharacter: (id: string) => void
   renameCharacter: (id: string, name: string) => void
   setActiveCharacter: (id: string) => void
+  setAttachY: (id: string, y: number) => void
   addLayer: (layer: Layer) => void
   updateLayer: (id: string, patch: Partial<Layer>) => void
   removeLayer: (id: string) => void
   moveLayer: (id: string, dir: 'up' | 'down') => void
 }
 
-const first: Character = { id: newId(), name: '캐릭터 1', swingStartedAt: performance.now(), reactedAt: 0 }
+const first: Character = { id: newId(), name: '캐릭터 1', swingStartedAt: performance.now(), reactedAt: 0, attachY: 0 }
 
 export const useSwingStore = create<SwingState>((set) => ({
   amplitude: 20,
@@ -75,6 +86,12 @@ export const useSwingStore = create<SwingState>((set) => ({
   reactionSec: 1.2,
   popEffect: true,
   trim: true,
+  idleOn: false,
+  idleStrength: 6,
+  ribbonLength: DEFAULT_RIBBON_PX,
+  ribbonSwing: 0.5,
+  zoom: 1,
+  stopAt: 0,
   characters: [first],
   activeCharacterId: first.id,
   layers: [],
@@ -97,13 +114,16 @@ export const useSwingStore = create<SwingState>((set) => ({
     }),
   setPopEffect: (on) => set({ popEffect: on }),
   setTrim: (on) => set({ trim: on }),
+  setIdleOn: (on) => set({ idleOn: on }),
+  // 계속 흔들기도 끄고, 진동에 브레이크를 걸고, 예약된 밀기를 취소 (루프가 stopAt 변화를 감지)
+  stop: () => set({ idleOn: false, stopAt: performance.now() }),
   kickCharacter: (id) =>
     set((s) => ({
       characters: s.characters.map((c) => (c.id === id ? { ...c, swingStartedAt: performance.now() } : c)),
     })),
   addCharacter: () =>
     set((s) => {
-      const c: Character = { id: newId(), name: `캐릭터 ${s.characters.length + 1}`, swingStartedAt: performance.now(), reactedAt: 0 }
+      const c: Character = { id: newId(), name: `캐릭터 ${s.characters.length + 1}`, swingStartedAt: performance.now(), reactedAt: 0 , attachY: 0 }
       return { characters: [...s.characters, c], activeCharacterId: c.id }
     }),
   // 마지막 한 명은 지울 수 없음. 소속 레이어도 함께 제거
@@ -120,6 +140,12 @@ export const useSwingStore = create<SwingState>((set) => ({
   renameCharacter: (id, name) =>
     set((s) => ({ characters: s.characters.map((c) => (c.id === id ? { ...c, name } : c)) })),
   setActiveCharacter: (id) => set({ activeCharacterId: id }),
+  // 끈이 달리는 높이를 옮기면 그 인원 모든 레이어의 회전 기준점 높이도 같이 따라감 (끈 끝 = 회전 중심)
+  setAttachY: (id, y) =>
+    set((s) => ({
+      characters: s.characters.map((c) => (c.id === id ? { ...c, attachY: y } : c)),
+      layers: s.layers.map((l) => (l.characterId === id ? { ...l, pivot: { ...l.pivot, y } } : l)),
+    })),
   addLayer: (layer) => set((s) => ({ layers: [...s.layers, layer] })),
   updateLayer: (id, patch) =>
     set((s) => ({ layers: s.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)) })),

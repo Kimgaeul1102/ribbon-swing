@@ -23,6 +23,7 @@ export type StoredSet = {
   id: string
   name: string
   createdAt: number
+  attachY?: number // 끈이 달린 높이 (이전 버전에서 저장한 세트에는 없음 → 첫 레이어 pivot 높이로 대신함)
   layers: StoredSetLayer[]
 }
 

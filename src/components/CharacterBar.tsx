@@ -9,6 +9,7 @@ function CharacterBar() {
   const removeCharacter = useSwingStore((s) => s.removeCharacter)
   const renameCharacter = useSwingStore((s) => s.renameCharacter)
   const spacing = useSwingStore((s) => s.spacing)
+  const setAttachY = useSwingStore((s) => s.setAttachY)
   const setParam = useSwingStore((s) => s.setParam)
 
   const active = characters.find((c) => c.id === activeId)
@@ -39,6 +40,26 @@ function CharacterBar() {
           + 인원 추가
         </button>
       </div>
+      {active && (
+        <label className="mt-3 block text-sm">
+          <span className="flex justify-between">
+            끈 위치 (위아래)
+            <span className="text-gray-500">{Math.round(active.attachY * 100)}%</span>
+          </span>
+          <input
+            type="range"
+            className="w-full accent-pink-500"
+            min={0}
+            max={1}
+            step={0.01}
+            value={active.attachY}
+            onChange={(e) => setAttachY(active.id, Number(e.target.value))}
+          />
+          <span className="text-xs text-gray-400">
+            0%는 정수리, 값을 키우면 끈이 목·몸 쪽에 달려요. 끈은 그림 뒤로 이어지고, 달린 곳이 흔들림의 중심이에요.
+          </span>
+        </label>
+      )}
       {characters.length > 1 && (
         <label className="mt-3 block text-sm">
           <span className="flex justify-between">

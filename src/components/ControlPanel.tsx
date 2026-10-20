@@ -1,7 +1,7 @@
 import { useSwingStore } from '../store/useSwingStore'
 
 type SliderDef = {
-  key: 'amplitude' | 'frequency' | 'damping' | 'wobble' | 'sway'
+  key: 'amplitude' | 'frequency' | 'damping' | 'wobble' | 'sway' | 'ribbonSwing' | 'ribbonLength' | 'zoom'
   label: string
   min: number
   max: number
@@ -14,6 +14,9 @@ const SLIDERS: SliderDef[] = [
   { key: 'damping', label: '감쇠', min: 0, max: 1, step: 0.01 },
   { key: 'wobble', label: '말랑함', min: 0, max: 1, step: 0.01 },
   { key: 'sway', label: '아래로 갈수록', min: 0, max: 1, step: 0.01 },
+  { key: 'ribbonSwing', label: '리본 흔들림', min: 0, max: 1, step: 0.01 },
+  { key: 'ribbonLength', label: '끈 길이 (px)', min: 0, max: 400, step: 5 },
+  { key: 'zoom', label: '줌 (작게 ↔ 크게)', min: 0.5, max: 1.5, step: 0.05 },
 ]
 
 const REACTION_SLIDERS: {
@@ -67,6 +70,44 @@ function ControlPanel() {
         </button>
       </div>
       <p className="mt-1 text-xs text-gray-400">차례대로: 1번 → 2번 → 3번… 순서로 밀려요</p>
+
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          aria-pressed={state.idleOn}
+          onClick={() => state.setIdleOn(!state.idleOn)}
+          className={`flex-1 rounded border py-1.5 text-sm ${
+            state.idleOn
+              ? 'border-pink-500 bg-pink-500 text-white hover:bg-pink-600'
+              : 'border-pink-400 text-pink-500 hover:bg-pink-50'
+          }`}
+        >
+          {state.idleOn ? '계속 흔들기 끄기' : '계속 흔들기'}
+        </button>
+        <button
+          type="button"
+          onClick={state.stop}
+          className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          멈추기
+        </button>
+      </div>
+      <label className={`mt-2 block text-sm ${state.idleOn ? '' : 'opacity-50'}`}>
+        <span className="flex justify-between">
+          계속 흔들기 세기
+          <span className="text-gray-500">{state.idleStrength}°</span>
+        </span>
+        <input
+          type="range"
+          className="w-full accent-pink-500"
+          min={0}
+          max={20}
+          step={0.5}
+          value={state.idleStrength}
+          onChange={(e) => state.setParam('idleStrength', Number(e.target.value))}
+        />
+        <span className="text-xs text-gray-400">밀지 않아도 자연스럽게 계속 흔들려요. 속도는 위의 "속도"를 따라가요.</span>
+      </label>
 
       <h3 className="mb-2 mt-4 text-sm font-bold text-pink-500">밀기 반응</h3>
       {REACTION_SLIDERS.map(({ key, label, min, max, step }) => (

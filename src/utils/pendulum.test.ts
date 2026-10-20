@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyPush,
+  idleAngle,
+  oscillator,
   pendulumAngle,
   pendulumVelocity,
   jellyStretch,
@@ -57,5 +60,57 @@ describe('말랑한 움직임', () => {
     expect(peak).toBeGreaterThan(10)
     for (let i = 0; i < 600; i++) stepSpring(s, 10, 1 / 60)
     expect(s.x).toBeCloseTo(10, 1)
+  })
+})
+
+describe('idleAngle(계속 흔들기)', () => {
+  it('세기 0이면 가만히, 아무리 시간이 지나도 ±세기를 넘지 않음', () => {
+    expect(idleAngle(3.3, 0, 0.8, 0.4)).toBe(0)
+    for (let t = 0; t < 120; t += 0.1) {
+      expect(Math.abs(idleAngle(t, 8, 0.8, 0.3))).toBeLessThanOrEqual(8)
+    }
+  })
+
+  it('seed가 다르면 다르게 흔들리고, 같으면 같음', () => {
+    expect(idleAngle(2, 8, 0.8, 0.1)).not.toBeCloseTo(idleAngle(2, 8, 0.8, 0.6))
+    expect(idleAngle(2, 8, 0.8, 0.1)).toBe(idleAngle(2, 8, 0.8, 0.1))
+  })
+
+  it('실제로 좌우로 오감', () => {
+    const values = Array.from({ length: 200 }, (_, i) => idleAngle(i * 0.05, 8, 0.8, 0.2))
+    expect(Math.max(...values)).toBeGreaterThan(4)
+    expect(Math.min(...values)).toBeLessThan(-4)
+  })
+})
+
+describe('밀기 진동 (충격을 더하는 방식)', () => {
+  it('정지 상태에서 한 번 밀면 예전 감쇠 진자(pendulumAngle)와 같은 궤적', () => {
+    const { w, omega, zeta } = oscillator(0.8, 0.2, 1)
+    const s = { x: 0, v: 0 }
+    applyPush(s, 20, w)
+    for (let i = 0; i < 60; i++) stepSpring(s, 0, 1 / 60, omega, zeta)
+    expect(s.x).toBeCloseTo(pendulumAngle(1, 20, 0.8, 0.2), 0)
+  })
+
+  it('흔들리는 중에 또 밀면 0으로 돌아가지 않고 지금 속도에 더해짐', () => {
+    const { w, omega, zeta } = oscillator(0.8, 0.2, 1)
+    const s = { x: 0, v: 0 }
+    applyPush(s, 20, w)
+    for (let i = 0; i < 20; i++) stepSpring(s, 0, 1 / 60, omega, zeta)
+    const before = { ...s }
+    applyPush(s, 20, w)
+    expect(s.x).toBe(before.x) // 각도는 그대로 (초반으로 돌아가지 않음)
+    expect(Math.abs(s.v)).toBeGreaterThan(Math.abs(before.v)) // 속도만 커짐
+  })
+
+  it('여러 번 눌러도 속도에 상한이 있음', () => {
+    const { w } = oscillator(0.8, 0.2, 1)
+    const s = { x: 0, v: 0 }
+    for (let i = 0; i < 50; i++) applyPush(s, 30, w)
+    expect(Math.abs(s.v)).toBeLessThanOrEqual(70 * w + 1e-9)
+  })
+
+  it('속도 배율이 낮으면 천천히 진동', () => {
+    expect(oscillator(0.8, 0.2, 0.5).w).toBeCloseTo(oscillator(0.8, 0.2, 1).w / 2)
   })
 })
