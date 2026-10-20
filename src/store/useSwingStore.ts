@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { newId } from '../utils/id'
 import type { Box, Size } from '../utils/trim'
 import { DEFAULT_RIBBON_PX } from '../utils/layout'
+import { moveGroupInLayers } from '../utils/groups'
 
 export type Character = {
   id: string
@@ -11,12 +12,30 @@ export type Character = {
   reactedAt: number // 마지막으로 "밀기"를 받은 시각 (표정 변화/뿅뿅 효과 기준, 0이면 없음)
 }
 
+/**
+ * 레이어 폴더 — 한 번에 올린 이미지 묶음. 같은 여백으로 함께 잘리고, 목록에서 한 덩어리로 접고 펴고 옮긴다.
+ * crop(자를 영역)은 폴더를 만들 때 한 번 계산해서 고정한다.
+ */
+export type LayerGroup = {
+  id: string
+  characterId: string
+  name: string
+  canvas: Size | null // 멤버 이미지의 공통 캔버스 크기 (크기가 제각각이면 null)
+  crop: Box | null // 멤버 불투명 영역 합집합 (원본 px 좌표). null이면 자르지 않음
+  createdAt: number // 먼저 올린 폴더가 기준 폴더(프레임 기준)
+  collapsed: boolean
+}
+
+/** 배경 그림 맞춤: 꽉 채우기(잘릴 수 있음) / 전체 보이기(여백 생김) / 늘려 맞추기(비율 무시) */
+export type BgFit = 'cover' | 'contain' | 'fill'
+
 /** 레이어 표시 조건: 항상 / 평소에만 / 밀렸을 때만 (표정 교체용) */
 export type Expression = 'always' | 'normal' | 'hit'
 
 export type Layer = {
   id: string
   characterId: string // 어느 캐릭터(인원)에 속한 레이어인지
+  groupId: string // 어느 폴더(한 번에 올린 묶음)에 속한 레이어인지
   expression: Expression
   canvas: Size // 이미지 원본 크기 (px)
   bbox: Box // 내용이 있는 영역 (원본 px 좌표) — 투명 여백 자르기용
@@ -48,18 +67,29 @@ type SwingState = {
   idleOn: boolean // 계속 흔들기 (밀지 않아도 자연스럽게 계속 흔들림)
   idleStrength: number // 계속 흔들기 세기 (deg, 0~20)
   ribbonLength: number // 리본 끈 길이 (px, 위쪽 가로대에서 캐릭터까지)
+  ribbonWidth: number // 리본 끈 굵기/그림 너비 (px)
+  ribbonAssetId: string | null // 리본 그림 (보관함 이미지 id). null이면 기본 분홍 끈
+  bgColor: string // 배경색
+  bgAssetId: string | null // 배경 그림 (보관함 이미지 id)
+  bgFit: BgFit // 배경 그림 맞춤 방식
   ribbonSwing: number // 리본 끈이 흔들리는 정도 (0~1) — 캐릭터 흔들림 중 끈이 맡는 비율
   zoom: number // 화면 확대/축소 (0.5~1.5)
   stopAt: number // 마지막으로 "멈추기"를 누른 시각 (performance.now, ms)
   characters: Character[]
   activeCharacterId: string // 레이어 편집 대상
+  groups: LayerGroup[]
   layers: Layer[]
-  setParam: (key: 'amplitude' | 'frequency' | 'damping' | 'wobble' | 'sway' | 'spacing' | 'pushGap' | 'reactionSec' | 'idleStrength' | 'ribbonSwing' | 'ribbonLength' | 'zoom', value: number) => void
+  setParam: (key: 'amplitude' | 'frequency' | 'damping' | 'wobble' | 'sway' | 'spacing' | 'pushGap' | 'reactionSec' | 'idleStrength' | 'ribbonSwing' | 'ribbonLength' | 'ribbonWidth' | 'zoom', value: number) => void
   pushAll: () => void
   pushSequential: () => void
   setPopEffect: (on: boolean) => void
   setTrim: (on: boolean) => void
   setIdleOn: (on: boolean) => void
+  setRibbonAsset: (id: string | null) => void
+  setBgColor: (color: string) => void
+  setBgAsset: (id: string | null) => void
+  setBgFit: (fit: BgFit) => void
+  applyScene: (params: SceneParams, characters: Character[], groups: LayerGroup[], layers: Layer[]) => void
   stop: () => void
   kickCharacter: (id: string) => void
   addCharacter: () => void
@@ -67,11 +97,22 @@ type SwingState = {
   renameCharacter: (id: string, name: string) => void
   setActiveCharacter: (id: string) => void
   setAttachY: (id: string, y: number) => void
-  addLayer: (layer: Layer) => void
+  addGroup: (group: LayerGroup, layers: Layer[]) => void
+  replaceCharacterContent: (characterId: string, groups: LayerGroup[], layers: Layer[]) => void
+  removeGroup: (id: string) => void
+  moveGroup: (id: string, dir: 'up' | 'down') => void
+  renameGroup: (id: string, name: string) => void
+  setGroupCollapsed: (id: string, collapsed: boolean) => void
+  setGroupEnabled: (id: string, enabled: boolean) => void
+  removeAssetLayers: (assetId: string) => void
   updateLayer: (id: string, patch: Partial<Layer>) => void
   removeLayer: (id: string) => void
   moveLayer: (id: string, dir: 'up' | 'down') => void
 }
+
+const DEFAULT_RIBBON_WIDTH = 6
+const IMAGE_RIBBON_WIDTH = 28
+const DEFAULT_BG_COLOR = '#fdf2f8'
 
 const first: Character = { id: newId(), name: '캐릭터 1', swingStartedAt: performance.now(), reactedAt: 0, attachY: 0 }
 
@@ -89,11 +130,17 @@ export const useSwingStore = create<SwingState>((set) => ({
   idleOn: false,
   idleStrength: 6,
   ribbonLength: DEFAULT_RIBBON_PX,
+  ribbonWidth: DEFAULT_RIBBON_WIDTH,
+  ribbonAssetId: null,
+  bgColor: DEFAULT_BG_COLOR,
+  bgAssetId: null,
+  bgFit: 'cover',
   ribbonSwing: 0.5,
   zoom: 1,
   stopAt: 0,
   characters: [first],
   activeCharacterId: first.id,
+  groups: [],
   layers: [],
   setParam: (key, value) => set({ [key]: value }),
   // 한번에: 모든 인원이 동시에 / 차례대로: 1번, 2번, 3번… pushGap초 간격으로
@@ -115,6 +162,24 @@ export const useSwingStore = create<SwingState>((set) => ({
   setPopEffect: (on) => set({ popEffect: on }),
   setTrim: (on) => set({ trim: on }),
   setIdleOn: (on) => set({ idleOn: on }),
+  // 리본 그림을 고르거나 해제하면 굵기도 어울리는 기본값으로 (그림 → 넓게, 기본 끈 → 가늘게). 이미 그림이 있을 땐 굵기 유지
+  setRibbonAsset: (id) =>
+    set((s) => ({
+      ribbonAssetId: id,
+      ribbonWidth: (s.ribbonAssetId === null) === (id === null) ? s.ribbonWidth : id ? IMAGE_RIBBON_WIDTH : DEFAULT_RIBBON_WIDTH,
+    })),
+  setBgColor: (color) => set({ bgColor: color }),
+  setBgAsset: (id) => set({ bgAssetId: id }),
+  setBgFit: (fit) => set({ bgFit: fit }),
+  // 컨셉(장면) 불러오기: 설정 + 인원 + 폴더 + 레이어를 한 번에 통째로 교체
+  applyScene: (params, characters, groups, layers) =>
+    set({
+      ...params,
+      characters,
+      activeCharacterId: characters[0].id,
+      groups,
+      layers,
+    }),
   // 계속 흔들기도 끄고, 진동에 브레이크를 걸고, 예약된 밀기를 취소 (루프가 stopAt 변화를 감지)
   stop: () => set({ idleOn: false, stopAt: performance.now() }),
   kickCharacter: (id) =>
@@ -133,6 +198,7 @@ export const useSwingStore = create<SwingState>((set) => ({
       const characters = s.characters.filter((c) => c.id !== id)
       return {
         characters,
+        groups: s.groups.filter((g) => g.characterId !== id),
         layers: s.layers.filter((l) => l.characterId !== id),
         activeCharacterId: s.activeCharacterId === id ? characters[0].id : s.activeCharacterId,
       }
@@ -146,16 +212,42 @@ export const useSwingStore = create<SwingState>((set) => ({
       characters: s.characters.map((c) => (c.id === id ? { ...c, attachY: y } : c)),
       layers: s.layers.map((l) => (l.characterId === id ? { ...l, pivot: { ...l.pivot, y } } : l)),
     })),
-  addLayer: (layer) => set((s) => ({ layers: [...s.layers, layer] })),
+  addGroup: (group, layers) => set((s) => ({ groups: [...s.groups, group], layers: [...s.layers, ...layers] })),
+  // 세트 불러오기 등: 한 인원의 폴더/레이어를 통째로 교체
+  replaceCharacterContent: (characterId, groups, layers) =>
+    set((s) => ({
+      groups: [...s.groups.filter((g) => g.characterId !== characterId), ...groups],
+      layers: [...s.layers.filter((l) => l.characterId !== characterId), ...layers],
+    })),
+  removeGroup: (id) =>
+    set((s) => ({ groups: s.groups.filter((g) => g.id !== id), layers: s.layers.filter((l) => l.groupId !== id) })),
+  // 폴더 단위로 앞뒤 순서 변경
+  moveGroup: (id, dir) => set((s) => ({ layers: moveGroupInLayers(s.layers, s.groups, id, dir) })),
+  renameGroup: (id, name) => set((s) => ({ groups: s.groups.map((g) => (g.id === id ? { ...g, name } : g)) })),
+  setGroupCollapsed: (id, collapsed) =>
+    set((s) => ({ groups: s.groups.map((g) => (g.id === id ? { ...g, collapsed } : g)) })),
+  setGroupEnabled: (id, enabled) =>
+    set((s) => ({ layers: s.layers.map((l) => (l.groupId === id ? { ...l, enabled } : l)) })),
+  // 보관함에서 이미지를 지울 때: 그 이미지를 쓰는 레이어를 모두 지우고, 비어 버린 폴더도 지움
+  removeAssetLayers: (assetId) =>
+    set((s) => {
+      const layers = s.layers.filter((l) => l.assetId !== assetId)
+      return { layers, groups: s.groups.filter((g) => layers.some((l) => l.groupId === g.id)) }
+    }),
   updateLayer: (id, patch) =>
     set((s) => ({ layers: s.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)) })),
-  removeLayer: (id) => set((s) => ({ layers: s.layers.filter((l) => l.id !== id) })),
-  // up = zIndex가 큰 쪽(앞쪽)으로. 같은 캐릭터의 이웃 레이어와 zIndex를 맞바꾼다
+  // 폴더의 마지막 레이어를 지우면 폴더도 같이 지움
+  removeLayer: (id) =>
+    set((s) => {
+      const layers = s.layers.filter((l) => l.id !== id)
+      return { layers, groups: s.groups.filter((g) => layers.some((l) => l.groupId === g.id)) }
+    }),
+  // up = zIndex가 큰 쪽(앞쪽)으로. 같은 폴더의 이웃 레이어와 zIndex를 맞바꾼다 (폴더 안에서만 이동)
   moveLayer: (id, dir) =>
     set((s) => {
       const target = s.layers.find((l) => l.id === id)
       if (!target) return s
-      const sorted = s.layers.filter((l) => l.characterId === target.characterId).sort((a, b) => a.zIndex - b.zIndex)
+      const sorted = s.layers.filter((l) => l.groupId === target.groupId).sort((a, b) => a.zIndex - b.zIndex)
       const i = sorted.findIndex((l) => l.id === id)
       const j = dir === 'up' ? i + 1 : i - 1
       if (j < 0 || j >= sorted.length) return s
@@ -168,3 +260,15 @@ export const useSwingStore = create<SwingState>((set) => ({
       }
     }),
 }))
+
+/** 컨셉(장면)에 함께 저장되는 설정 값들 */
+const SCENE_PARAM_KEYS = [
+  'amplitude', 'frequency', 'damping', 'wobble', 'sway', 'spacing', 'pushGap', 'reactionSec', 'popEffect', 'trim',
+  'idleOn', 'idleStrength', 'ribbonLength', 'ribbonWidth', 'ribbonAssetId', 'ribbonSwing', 'zoom', 'bgColor', 'bgAssetId', 'bgFit',
+] as const
+
+export type SceneParams = Pick<SwingState, (typeof SCENE_PARAM_KEYS)[number]>
+
+export function pickSceneParams(s: SceneParams): SceneParams {
+  return Object.fromEntries(SCENE_PARAM_KEYS.map((k) => [k, s[k]])) as SceneParams
+}

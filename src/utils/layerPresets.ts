@@ -37,11 +37,13 @@ export function createLayer(
   asset: { id: string; name: string; url: string; canvas: Size; bbox: Box },
   zIndex: number,
   characterId: string,
+  groupId: string,
   attachY = 0, // 이 인원의 끈이 달린 높이 — 새 레이어의 회전 기준점 높이로 씀
 ): Layer {
   return {
     id: newId(),
     characterId,
+    groupId,
     expression: guessExpression(asset.name),
     assetId: asset.id,
     name: asset.name,

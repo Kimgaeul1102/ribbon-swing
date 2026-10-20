@@ -32,11 +32,11 @@ describe('createLayer', () => {
   const asset = { id: 'a', name: 'hair', url: '', canvas: { w: 10, h: 10 }, bbox: { x: 0, y: 0, w: 10, h: 10 } }
 
   it('회전 기준점 높이는 인원의 끈이 달린 높이를 따름', () => {
-    expect(createLayer(asset, 0, 'c').pivot).toEqual({ x: 0.5, y: 0 })
-    expect(createLayer(asset, 0, 'c', 0.35).pivot).toEqual({ x: 0.5, y: 0.35 })
+    expect(createLayer(asset, 0, 'c', 'g').pivot).toEqual({ x: 0.5, y: 0 })
+    expect(createLayer(asset, 0, 'c', 'g', 0.35).pivot).toEqual({ x: 0.5, y: 0.35 })
   })
 
   it('프리셋(지연/강성)은 그대로', () => {
-    expect(createLayer(asset, 0, 'c', 0.35).delay).toBe(80)
+    expect(createLayer(asset, 0, 'c', 'g', 0.35).delay).toBe(80)
   })
 })

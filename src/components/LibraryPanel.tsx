@@ -3,7 +3,7 @@ import { useLibraryStore } from '../store/useLibraryStore'
 
 /** 보관함(한 번 올린 이미지 재사용) + 저장된 세트(레이어 구성/설정 통째로 저장·불러오기) */
 function LibraryPanel() {
-  const assets = useLibraryStore((s) => s.assets)
+  const assets = useLibraryStore((s) => s.assets).filter((a) => a.kind === 'layer') // 리본/배경 그림은 각 탭에서
   const sets = useLibraryStore((s) => s.sets)
   const addLayerFromAsset = useLibraryStore((s) => s.addLayerFromAsset)
   const removeAsset = useLibraryStore((s) => s.removeAsset)

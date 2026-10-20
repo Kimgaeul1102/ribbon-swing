@@ -3,83 +3,164 @@ import { useSwingStore } from '../store/useSwingStore'
 import { useLibraryStore } from '../store/useLibraryStore'
 import LayerSettings from './LayerSettings'
 import { layoutFor } from '../utils/frame'
+import { orderedGroups } from '../utils/groups'
 
-/** 레이어 목록 — 업로드/삭제/순서, [⋮]로 레이어 설정 펼치기 */
+/**
+ * 레이어 목록 — 한 번에 올린 이미지는 한 폴더로 묶여 같은 여백으로 잘린다.
+ * 폴더는 접고 펼 수 있고, 폴더 단위로 켜고 끄고/앞뒤 이동/삭제. 펼치면 안의 레이어를 따로 설정([⋮])할 수 있다.
+ */
 function LayerList() {
   const allLayers = useSwingStore((s) => s.layers)
+  const allGroups = useSwingStore((s) => s.groups)
   const activeId = useSwingStore((s) => s.activeCharacterId)
   const activeName = useSwingStore((s) => s.characters.find((c) => c.id === s.activeCharacterId)?.name)
-  const layers = allLayers.filter((l) => l.characterId === activeId)
   const updateLayer = useSwingStore((s) => s.updateLayer)
   const removeLayer = useSwingStore((s) => s.removeLayer)
   const moveLayer = useSwingStore((s) => s.moveLayer)
+  const moveGroup = useSwingStore((s) => s.moveGroup)
+  const removeGroup = useSwingStore((s) => s.removeGroup)
+  const renameGroup = useSwingStore((s) => s.renameGroup)
+  const setGroupCollapsed = useSwingStore((s) => s.setGroupCollapsed)
+  const setGroupEnabled = useSwingStore((s) => s.setGroupEnabled)
   const uploadAsLayers = useLibraryStore((s) => s.uploadAsLayers)
   const inputRef = useRef<HTMLInputElement>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const trim = useSwingStore((s) => s.trim)
   const setTrim = useSwingStore((s) => s.setTrim)
-  const frame = layoutFor(layers, trim)
 
-  // 위쪽(앞쪽) 레이어가 목록 위에 오도록
-  const sorted = [...layers].sort((a, b) => b.zIndex - a.zIndex)
+  const layers = allLayers.filter((l) => l.characterId === activeId)
+  const charGroups = allGroups.filter((g) => g.characterId === activeId)
+  const frame = layoutFor(charGroups, layers, trim)
+  // 위쪽(앞쪽) 폴더가 목록 위에 오도록
+  const groups = orderedGroups(charGroups, layers).reverse()
 
   return (
     <section className="mb-6">
       <h2 className="mb-3 font-bold text-pink-600">Layers · {activeName}</h2>
-      {sorted.length === 0 && <p className="text-sm text-gray-400">레이어가 없습니다</p>}
+      {groups.length === 0 && <p className="text-sm text-gray-400">레이어가 없습니다</p>}
       <ul>
-        {sorted.map((l, i) => (
-          <li key={l.id} className="py-1 text-sm">
-           <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={l.enabled}
-              onChange={(e) => updateLayer(l.id, { enabled: e.target.checked })}
-            />
-            <span className="min-w-0 flex-1 truncate">
-              {l.name}
-              {l.expression === 'normal' && <span className="ml-1 text-xs text-gray-400">(평소)</span>}
-              {l.expression === 'hit' && <span className="ml-1 text-xs text-pink-400">(밀림)</span>}
-            </span>
-            <button
-              type="button"
-              aria-label="레이어 설정"
-              aria-expanded={openId === l.id}
-              onClick={() => setOpenId(openId === l.id ? null : l.id)}
-              className={`px-1 ${openId === l.id ? 'text-pink-600' : 'text-gray-500'}`}
-            >
-              ⋮
-            </button>
-            <button
-              type="button"
-              aria-label="앞으로"
-              disabled={i === 0}
-              onClick={() => moveLayer(l.id, 'up')}
-              className="px-1 text-gray-500 disabled:opacity-30"
-            >
-              ▲
-            </button>
-            <button
-              type="button"
-              aria-label="뒤로"
-              disabled={i === sorted.length - 1}
-              onClick={() => moveLayer(l.id, 'down')}
-              className="px-1 text-gray-500 disabled:opacity-30"
-            >
-              ▼
-            </button>
-            <button
-              type="button"
-              aria-label="레이어 제거"
-              onClick={() => removeLayer(l.id)}
-              className="px-1 text-gray-400 hover:text-pink-600"
-            >
-              ✕
-            </button>
-           </div>
-           {openId === l.id && <LayerSettings layer={l} frame={frame} onClose={() => setOpenId(null)} />}
-          </li>
-        ))}
+        {groups.map((g, gi) => {
+          // 폴더 안에서도 위쪽(앞쪽) 레이어가 위에 오도록
+          const members = layers.filter((l) => l.groupId === g.id).sort((a, b) => b.zIndex - a.zIndex)
+          const allOn = members.every((l) => l.enabled)
+          const someOn = members.some((l) => l.enabled)
+          return (
+            <li key={g.id} className="mb-2 rounded border border-pink-100">
+              <div className="flex items-center gap-1 bg-pink-50/60 px-2 py-1 text-sm">
+                <button
+                  type="button"
+                  aria-label={g.collapsed ? '폴더 펼치기' : '폴더 접기'}
+                  aria-expanded={!g.collapsed}
+                  onClick={() => setGroupCollapsed(g.id, !g.collapsed)}
+                  className="w-5 text-gray-500"
+                >
+                  {g.collapsed ? '▸' : '▾'}
+                </button>
+                <input
+                  type="checkbox"
+                  aria-label="폴더 전체 켜고 끄기"
+                  checked={allOn}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someOn && !allOn
+                  }}
+                  onChange={(e) => setGroupEnabled(g.id, e.target.checked)}
+                />
+                <input
+                  value={g.name}
+                  aria-label="폴더 이름"
+                  onChange={(e) => renameGroup(g.id, e.target.value)}
+                  className="mx-1 min-w-0 flex-1 truncate rounded border border-transparent bg-transparent px-1 font-medium hover:border-pink-200 focus:border-pink-300"
+                />
+                <span className="text-xs text-gray-400">{members.length}장</span>
+                <button
+                  type="button"
+                  aria-label="폴더 앞으로"
+                  disabled={gi === 0}
+                  onClick={() => moveGroup(g.id, 'up')}
+                  className="px-1 text-gray-500 disabled:opacity-30"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  aria-label="폴더 뒤로"
+                  disabled={gi === groups.length - 1}
+                  onClick={() => moveGroup(g.id, 'down')}
+                  className="px-1 text-gray-500 disabled:opacity-30"
+                >
+                  ▼
+                </button>
+                <button
+                  type="button"
+                  aria-label="폴더 삭제"
+                  onClick={() => {
+                    if (members.length < 2 || window.confirm(`폴더 "${g.name}"와(과) 안의 레이어 ${members.length}장을 지울까요?`))
+                      removeGroup(g.id)
+                  }}
+                  className="px-1 text-gray-400 hover:text-pink-600"
+                >
+                  ✕
+                </button>
+              </div>
+              {!g.collapsed && (
+                <ul className="px-2 pb-1 pl-6">
+                  {members.map((l, i) => (
+                    <li key={l.id} className="py-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={l.enabled}
+                          onChange={(e) => updateLayer(l.id, { enabled: e.target.checked })}
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {l.name}
+                          {l.expression === 'normal' && <span className="ml-1 text-xs text-gray-400">(평소)</span>}
+                          {l.expression === 'hit' && <span className="ml-1 text-xs text-pink-400">(밀림)</span>}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="레이어 설정"
+                          aria-expanded={openId === l.id}
+                          onClick={() => setOpenId(openId === l.id ? null : l.id)}
+                          className={`px-1 ${openId === l.id ? 'text-pink-600' : 'text-gray-500'}`}
+                        >
+                          ⋮
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="앞으로"
+                          disabled={i === 0}
+                          onClick={() => moveLayer(l.id, 'up')}
+                          className="px-1 text-gray-500 disabled:opacity-30"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="뒤로"
+                          disabled={i === members.length - 1}
+                          onClick={() => moveLayer(l.id, 'down')}
+                          className="px-1 text-gray-500 disabled:opacity-30"
+                        >
+                          ▼
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="레이어 제거"
+                          onClick={() => removeLayer(l.id)}
+                          className="px-1 text-gray-400 hover:text-pink-600"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      {openId === l.id && <LayerSettings layer={l} frame={frame} onClose={() => setOpenId(null)} />}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )
+        })}
       </ul>
       <input
         ref={inputRef}
@@ -98,8 +179,9 @@ function LayerList() {
         onClick={() => inputRef.current?.click()}
         className="mt-3 text-sm text-pink-500 hover:text-pink-600"
       >
-        + 레이어 추가 (PNG 여러 장 선택 가능)
+        + 레이어 추가 (PNG 여러 장 선택 → 폴더 하나)
       </button>
+      <p className="text-xs text-gray-400">한 번에 올린 이미지는 한 폴더로 묶여 같은 여백으로 함께 잘려요.</p>
       <label className="mt-2 flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -109,7 +191,9 @@ function LayerList() {
         />
         투명 여백 자동으로 자르기
       </label>
-      <p className="ml-6 text-xs text-gray-400">같은 캐릭터의 레이어끼리 위치가 어긋나지 않게 함께 잘라요.</p>
+      <p className="ml-6 text-xs text-gray-400">
+        맨 처음 올린 폴더가 화면 크기의 기준이에요. 다른 폴더를 더해도 이미 올린 그림은 움직이지 않아요.
+      </p>
     </section>
   )
 }

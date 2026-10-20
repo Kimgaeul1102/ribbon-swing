@@ -1,23 +1,53 @@
 import { create } from 'zustand'
-import { useSwingStore } from './useSwingStore'
-import { getAll, put, remove, type StoredAsset, type StoredSet } from '../utils/assetDb'
+import {
+  useSwingStore,
+  pickSceneParams,
+  type Character,
+  type Layer,
+  type LayerGroup,
+} from './useSwingStore'
+import {
+  getAll,
+  put,
+  remove,
+  type AssetKind,
+  type StoredAsset,
+  type StoredScene,
+  type StoredSet,
+  type StoredSetLayer,
+} from '../utils/assetDb'
 import { createLayer } from '../utils/layerPresets'
+import { computeCrop } from '../utils/groups'
 import { newId } from '../utils/id'
 import { measureImage, type Box, type Size } from '../utils/trim'
 
-export type LibraryAsset = { id: string; name: string; hash: string; url: string; canvas: Size; bbox: Box }
+export type LibraryAsset = {
+  id: string
+  name: string
+  hash: string
+  url: string
+  kind: AssetKind
+  canvas: Size
+  bbox: Box
+}
 
 type LibraryState = {
   assets: LibraryAsset[]
   sets: StoredSet[]
+  scenes: StoredScene[]
   init: () => Promise<void>
-  /** 파일을 보관함에 저장(같은 이미지는 재사용)하고 레이어로 추가 */
+  /** 파일을 보관함에 저장(같은 이미지는 재사용)하고, 한 폴더로 묶어 레이어로 추가 */
   uploadAsLayers: (files: File[]) => Promise<void>
+  /** 리본/배경 그림 등 레이어가 아닌 이미지를 보관함에 저장하고 돌려줌 */
+  uploadImages: (files: File[], kind: AssetKind) => Promise<LibraryAsset[]>
   addLayerFromAsset: (assetId: string) => void
   removeAsset: (id: string) => void
   saveSet: (name: string) => void
   applySet: (id: string) => void
   deleteSet: (id: string) => void
+  saveScene: (name: string) => void
+  applyScene: (id: string) => void
+  deleteScene: (id: string) => void
 }
 
 const warn = (e: unknown) => console.warn('보관함 저장 실패 (이번 세션에서만 유지됨):', e)
@@ -34,6 +64,11 @@ function activeLayers() {
   return layers.filter((l) => l.characterId === activeCharacterId)
 }
 
+function activeGroups() {
+  const { groups, activeCharacterId } = useSwingStore.getState()
+  return groups.filter((g) => g.characterId === activeCharacterId)
+}
+
 function activeAttachY(): number {
   const { characters, activeCharacterId } = useSwingStore.getState()
   return characters.find((c) => c.id === activeCharacterId)?.attachY ?? 0
@@ -44,15 +79,69 @@ function nextZIndex(): number {
   return zs.length ? Math.max(...zs) + 1 : 0
 }
 
+/** 이미지들로 폴더 하나(+레이어들)를 만든다. 자를 영역은 지금 만들 때 한 번 계산해서 고정 */
+function buildFolder(name: string, assets: LibraryAsset[]): { group: LayerGroup; layers: Layer[] } {
+  const { activeCharacterId } = useSwingStore.getState()
+  const groupId = newId()
+  let z = nextZIndex()
+  const layers = assets.map((a) => createLayer(a, z++, activeCharacterId, groupId, activeAttachY()))
+  const group: LayerGroup = {
+    id: groupId,
+    characterId: activeCharacterId,
+    name,
+    createdAt: Date.now(),
+    collapsed: false,
+    ...computeCrop(layers),
+  }
+  return { group, layers }
+}
+
+/** 저장용으로 레이어에서 id/이미지 주소/캔버스 정보(이미지에서 다시 구함)를 뺀다 */
+function toStoredLayer(l: Layer): StoredSetLayer {
+  return {
+    groupId: l.groupId,
+    assetId: l.assetId,
+    expression: l.expression,
+    name: l.name,
+    zIndex: l.zIndex,
+    pivot: { ...l.pivot },
+    delay: l.delay,
+    speedMul: l.speedMul,
+    amplitudeMul: l.amplitudeMul,
+    stiffness: l.stiffness,
+    waveMul: l.waveMul,
+    swayMul: l.swayMul,
+    enabled: l.enabled,
+  }
+}
+
+/** 저장된 레이어를 다시 레이어로. 예전에 저장한 데이터에 없는 항목은 기본값 */
+function restoreLayer(stored: StoredSetLayer, asset: LibraryAsset, characterId: string, groupId: string): Layer {
+  return {
+    ...stored,
+    id: newId(),
+    characterId,
+    groupId,
+    expression: stored.expression ?? 'always',
+    speedMul: stored.speedMul ?? 1,
+    waveMul: stored.waveMul ?? 1,
+    swayMul: stored.swayMul ?? 1,
+    src: asset.url,
+    canvas: asset.canvas,
+    bbox: asset.bbox,
+    pivot: { ...stored.pivot },
+  }
+}
+
 let initPromise: Promise<void> | null = null
 
 export const useLibraryStore = create<LibraryState>((set, get) => {
-  async function importAssets(files: File[]): Promise<LibraryAsset[]> {
+  async function importAssets(files: File[], kind: AssetKind): Promise<LibraryAsset[]> {
     const result: LibraryAsset[] = []
     for (const file of files) {
       if (!file.type.startsWith('image/')) continue
       const hash = await hashBlob(file, file.name)
-      let asset = get().assets.find((a) => a.hash === hash)
+      let asset = get().assets.find((a) => a.hash === hash && a.kind === kind)
       if (!asset) {
         let measured
         try {
@@ -66,6 +155,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           name: file.name.replace(/\.[^.]+$/, ''),
           hash,
           url: URL.createObjectURL(file),
+          kind,
           ...measured,
         }
         asset = fresh
@@ -76,6 +166,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           hash,
           blob: file,
           createdAt: Date.now(),
+          kind,
           ...measured,
         }
         put('assets', stored).catch(warn)
@@ -88,13 +179,19 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
   return {
     assets: [],
     sets: [],
+    scenes: [],
 
     init: () => {
       initPromise ??= (async () => {
         try {
-          const [assets, sets] = await Promise.all([getAll<StoredAsset>('assets'), getAll<StoredSet>('sets')])
+          const [assets, sets, scenes] = await Promise.all([
+            getAll<StoredAsset>('assets'),
+            getAll<StoredSet>('sets'),
+            getAll<StoredScene>('scenes'),
+          ])
           assets.sort((a, b) => a.createdAt - b.createdAt)
           sets.sort((a, b) => a.createdAt - b.createdAt)
+          scenes.sort((a, b) => a.createdAt - b.createdAt)
           // 이전 버전에서 저장한 이미지는 크기/내용 영역 정보가 없으니 지금 계산해서 채운다
           const measuredAssets = await Promise.all(
             assets.map(async (a) => {
@@ -115,10 +212,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
               name: a.name,
               hash: a.hash,
               url: URL.createObjectURL(a.blob),
+              kind: a.kind ?? 'layer',
               canvas: a.canvas,
               bbox: a.bbox,
             })),
             sets,
+            scenes,
           })
         } catch (e) {
           console.warn('보관함을 불러오지 못했습니다:', e)
@@ -127,26 +226,35 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       return initPromise
     },
 
+    uploadImages: (files, kind) => importAssets(files, kind),
+
     uploadAsLayers: async (files) => {
-      const assets = await importAssets(files)
-      const { addLayer, kickCharacter, activeCharacterId } = useSwingStore.getState()
-      let z = nextZIndex()
-      for (const asset of assets) addLayer(createLayer(asset, z++, activeCharacterId, activeAttachY()))
-      if (assets.length) kickCharacter(activeCharacterId)
+      const assets = await importAssets(files, 'layer')
+      if (!assets.length) return
+      // 한 번에 올린 이미지는 한 폴더로 묶어 같은 여백으로 자른다
+      const name = assets.length === 1 ? assets[0].name : `${assets[0].name} 외 ${assets.length - 1}장`
+      const { group, layers } = buildFolder(name, assets)
+      const { addGroup, kickCharacter } = useSwingStore.getState()
+      addGroup(group, layers)
+      kickCharacter(group.characterId)
     },
 
     addLayerFromAsset: (assetId) => {
       const asset = get().assets.find((a) => a.id === assetId)
       if (!asset) return
-      const { addLayer, kickCharacter, activeCharacterId } = useSwingStore.getState()
-      addLayer(createLayer(asset, nextZIndex(), activeCharacterId, activeAttachY()))
-      kickCharacter(activeCharacterId)
+      const { group, layers } = buildFolder(asset.name, [asset])
+      const { addGroup, kickCharacter } = useSwingStore.getState()
+      addGroup(group, layers)
+      kickCharacter(group.characterId)
     },
 
     removeAsset: (id) => {
       const asset = get().assets.find((a) => a.id === id)
       if (!asset) return
-      useSwingStore.setState((s) => ({ layers: s.layers.filter((l) => l.assetId !== id) }))
+      const store = useSwingStore.getState()
+      store.removeAssetLayers(id)
+      if (store.ribbonAssetId === id) store.setRibbonAsset(null)
+      if (store.bgAssetId === id) store.setBgAsset(null)
       URL.revokeObjectURL(asset.url)
       set((s) => ({ assets: s.assets.filter((a) => a.id !== id) }))
       remove('assets', id).catch(warn)
@@ -162,20 +270,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         name,
         createdAt: existing?.createdAt ?? Date.now(),
         attachY: activeAttachY(),
-        layers: activeLayers().map((l) => ({
-          assetId: l.assetId,
-          expression: l.expression,
-          name: l.name,
-          zIndex: l.zIndex,
-          pivot: { ...l.pivot },
-          delay: l.delay,
-          speedMul: l.speedMul,
-          amplitudeMul: l.amplitudeMul,
-          stiffness: l.stiffness,
-          waveMul: l.waveMul,
-          swayMul: l.swayMul,
-          enabled: l.enabled,
-        })),
+        // 폴더는 올린 순서대로 (첫 폴더가 불러올 때도 기준 폴더)
+        groups: activeGroups()
+          .filter((g) => activeLayers().some((l) => l.groupId === g.id))
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .map((g) => ({ id: g.id, name: g.name })),
+        layers: activeLayers().map(toStoredLayer),
       }
       set((s) => ({ sets: existing ? s.sets.map((x) => (x.id === saved.id ? saved : x)) : [...s.sets, saved] }))
       put('sets', saved).catch(warn)
@@ -186,38 +286,118 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       if (!saved) return
       // 선택된 캐릭터의 레이어만 교체 (다른 인원은 그대로)
       const { activeCharacterId } = useSwingStore.getState()
+      // 폴더: 저장된 폴더들을 새 id로 다시 만든다. 폴더가 생기기 전에 저장한 세트는 세트 전체가 폴더 하나
+      const savedGroups = saved.groups?.length ? saved.groups : [{ id: '', name: saved.name }]
+      const idMap = new Map(savedGroups.map((g) => [g.id, newId()]))
+      const fallbackGroup = idMap.get(savedGroups[0].id)!
       const layers = saved.layers.flatMap((l) => {
         const asset = get().assets.find((a) => a.id === l.assetId)
-        return asset
+        const groupId = (l.groupId !== undefined && idMap.get(l.groupId)) || fallbackGroup
+        return asset ? [restoreLayer(l, asset, activeCharacterId, groupId)] : []
+      })
+      // 세트에 저장된 끈 위치를 이 인원에 적용 (예전 세트는 첫 레이어의 회전 기준점 높이로 대신함)
+      const attachY = saved.attachY ?? saved.layers[0]?.pivot.y ?? 0
+      // 자를 영역은 폴더 멤버로 다시 계산해서 고정 (순서대로 createdAt을 줘서 첫 폴더가 기준 폴더)
+      const base = Date.now()
+      const groups: LayerGroup[] = savedGroups.flatMap((g, i) => {
+        const members = layers.filter((l) => l.groupId === idMap.get(g.id))
+        return members.length
           ? [
               {
-                ...l,
-                id: newId(),
+                id: idMap.get(g.id)!,
                 characterId: activeCharacterId,
-                expression: l.expression ?? 'always', // 예전에 저장한 세트에는 없는 항목들은 기본값
-                speedMul: l.speedMul ?? 1,
-                waveMul: l.waveMul ?? 1,
-                swayMul: l.swayMul ?? 1,
-                src: asset.url,
-                canvas: asset.canvas,
-                bbox: asset.bbox,
-                pivot: { ...l.pivot },
+                name: g.name,
+                createdAt: base + i,
+                collapsed: false,
+                ...computeCrop(members),
               },
             ]
           : []
       })
-      // 세트에 저장된 끈 위치를 이 인원에 적용 (예전 세트는 첫 레이어의 회전 기준점 높이로 대신함)
-      const attachY = saved.attachY ?? saved.layers[0]?.pivot.y ?? 0
       useSwingStore.setState((s) => ({
         characters: s.characters.map((c) => (c.id === activeCharacterId ? { ...c, attachY } : c)),
-        layers: [...s.layers.filter((l) => l.characterId !== activeCharacterId), ...layers],
       }))
+      useSwingStore.getState().replaceCharacterContent(activeCharacterId, groups, layers)
       useSwingStore.getState().kickCharacter(activeCharacterId)
     },
 
     deleteSet: (id) => {
       set((s) => ({ sets: s.sets.filter((x) => x.id !== id) }))
       remove('sets', id).catch(warn)
+    },
+
+    // 컨셉(장면 전체) 저장: 설정 값 + 배경/리본 그림 + 모든 인원의 폴더/레이어. 같은 이름이면 덮어씀
+    saveScene: (rawName) => {
+      const name = rawName.trim()
+      if (!name) return
+      const s = useSwingStore.getState()
+      const existing = get().scenes.find((x) => x.name === name)
+      const saved: StoredScene = {
+        id: existing?.id ?? newId(),
+        name,
+        createdAt: existing?.createdAt ?? Date.now(),
+        params: pickSceneParams(s),
+        characters: s.characters.map((c) => ({ key: c.id, name: c.name, attachY: c.attachY })),
+        groups: s.groups
+          .filter((g) => s.layers.some((l) => l.groupId === g.id))
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .map((g) => ({ id: g.id, characterKey: g.characterId, name: g.name, createdAt: g.createdAt })),
+        layers: s.layers.map((l) => ({ ...toStoredLayer(l), characterKey: l.characterId })),
+      }
+      set((st) => ({ scenes: existing ? st.scenes.map((x) => (x.id === saved.id ? saved : x)) : [...st.scenes, saved] }))
+      put('scenes', saved).catch(warn)
+    },
+
+    applyScene: (id) => {
+      const saved = get().scenes.find((x) => x.id === id)
+      if (!saved || !saved.characters.length) return
+      const now = performance.now()
+      const charIds = new Map(saved.characters.map((c) => [c.key, newId()]))
+      const groupIds = new Map(saved.groups.map((g) => [g.id, newId()]))
+
+      const characters: Character[] = saved.characters.map((c) => ({
+        id: charIds.get(c.key)!,
+        name: c.name,
+        attachY: c.attachY,
+        swingStartedAt: now,
+        reactedAt: 0,
+      }))
+      const layers = saved.layers.flatMap((l) => {
+        const asset = get().assets.find((a) => a.id === l.assetId)
+        const characterId = charIds.get(l.characterKey)
+        const groupId = groupIds.get(l.groupId)
+        return asset && characterId && groupId ? [restoreLayer(l, asset, characterId, groupId)] : []
+      })
+      const groups: LayerGroup[] = saved.groups.flatMap((g) => {
+        const members = layers.filter((l) => l.groupId === groupIds.get(g.id))
+        return members.length
+          ? [
+              {
+                id: groupIds.get(g.id)!,
+                characterId: charIds.get(g.characterKey)!,
+                name: g.name,
+                createdAt: g.createdAt,
+                collapsed: false,
+                ...computeCrop(members),
+              },
+            ]
+          : []
+      })
+      // 배경/리본 그림이 보관함에서 지워졌으면 해제
+      const exists = (assetId: string | null) => assetId !== null && get().assets.some((a) => a.id === assetId)
+      const params = {
+        ...saved.params,
+        ribbonAssetId: exists(saved.params.ribbonAssetId) ? saved.params.ribbonAssetId : null,
+        bgAssetId: exists(saved.params.bgAssetId) ? saved.params.bgAssetId : null,
+      }
+      const store = useSwingStore.getState()
+      store.applyScene(params, characters, groups, layers)
+      store.pushAll()
+    },
+
+    deleteScene: (id) => {
+      set((s) => ({ scenes: s.scenes.filter((x) => x.id !== id) }))
+      remove('scenes', id).catch(warn)
     },
   }
 })
