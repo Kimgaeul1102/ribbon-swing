@@ -1,15 +1,18 @@
 import { useRef } from 'react'
 import { useSwingStore, type Layer } from '../store/useSwingStore'
 import type { Expression } from '../store/useSwingStore'
+import type { Frame } from '../utils/frame'
 import { guessPreset } from '../utils/layerPresets'
 
 type LayerSettingsProps = {
   layer: Layer
+  frame: Frame // 캐릭터 프레임 (pivot 지정 화면 표시용)
   onClose: () => void
 }
 
 type SliderDef = {
-  key: 'delay' | 'amplitudeMul' | 'stiffness'
+  key: 'delay' | 'speedMul' | 'amplitudeMul' | 'stiffness' | 'waveMul' | 'swayMul'
+  percent?: boolean // 값(배율)을 %로 표시
   label: string
   hint: string
   min: number
@@ -19,15 +22,19 @@ type SliderDef = {
 
 const SLIDERS: SliderDef[] = [
   { key: 'delay', label: '지연 (ms)', hint: '클수록 본체보다 늦게 반응', min: 0, max: 300, step: 5 },
-  { key: 'amplitudeMul', label: '진폭 배율', hint: '클수록 크게 흔들림', min: 0.5, max: 2, step: 0.05 },
+  { key: 'speedMul', label: '속도', percent: true, hint: '낮을수록 천천히 흔들림 (100% = 본체와 같음)', min: 0.5, max: 1.5, step: 0.05 },
+  { key: 'amplitudeMul', label: '흔들림 크기', percent: true, hint: '클수록 더 크게 흔들림', min: 0.5, max: 2, step: 0.05 },
   { key: 'stiffness', label: '강성', hint: '낮을수록 흐물흐물 (1이면 본체에 딱 붙음)', min: 0.05, max: 1, step: 0.01 },
+  { key: 'waveMul', label: '말랑함', percent: true, hint: '전체 말랑함 슬라이더에 곱해져요. 0%면 이 레이어만 안 늘어남', min: 0, max: 2, step: 0.05 },
+  { key: 'swayMul', label: '아래로 갈수록', percent: true, hint: '전체 슬라이더에 곱해져요. 0%면 이 레이어만 안 쏠림', min: 0, max: 2, step: 0.05 },
 ]
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
 /** 개별 레이어 설정 — delay / amplitudeMul / stiffness 슬라이더 + 이미지를 눌러/끌어서 pivot 지정 */
-function LayerSettings({ layer, onClose }: LayerSettingsProps) {
+function LayerSettings({ layer, frame, onClose }: LayerSettingsProps) {
   const updateLayer = useSwingStore((s) => s.updateLayer)
+  const rect = frame.rect(layer)
   const pickerRef = useRef<HTMLDivElement>(null)
 
   const setPivotFromPointer = (e: React.PointerEvent) => {
@@ -40,11 +47,11 @@ function LayerSettings({ layer, onClose }: LayerSettingsProps) {
 
   return (
     <div className="mb-2 rounded border border-pink-200 bg-pink-50/50 p-3 text-sm">
-      {SLIDERS.map(({ key, label, hint, min, max, step }) => (
+      {SLIDERS.map(({ key, label, hint, min, max, step, percent }) => (
         <label key={key} className="mb-2 block">
           <span className="flex justify-between">
             {label}
-            <span className="text-gray-500">{layer[key]}</span>
+            <span className="text-gray-500">{percent ? `${Math.round(layer[key] * 100)}%` : layer[key]}</span>
           </span>
           <input
             type="range"
@@ -83,7 +90,9 @@ function LayerSettings({ layer, onClose }: LayerSettingsProps) {
       <div className="flex justify-center">
         <div
           ref={pickerRef}
-          className="relative inline-block cursor-crosshair touch-none select-none"
+          // 잘린 영역(프레임) 기준으로 보여줌 — pivot도 이 박스 기준 비율
+          className="relative h-40 max-w-full cursor-crosshair touch-none select-none"
+          style={{ aspectRatio: frame.aspect }}
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId)
             setPivotFromPointer(e)
@@ -92,12 +101,20 @@ function LayerSettings({ layer, onClose }: LayerSettingsProps) {
             if (e.currentTarget.hasPointerCapture(e.pointerId)) setPivotFromPointer(e)
           }}
         >
-          <img
-            src={layer.src}
-            alt={layer.name}
-            draggable={false}
-            className="block max-h-40 max-w-full rounded border border-pink-100 bg-white"
-          />
+          <div className="absolute inset-0 overflow-hidden rounded border border-pink-100 bg-white">
+            <img
+              src={layer.src}
+              alt={layer.name}
+              draggable={false}
+              className="absolute max-w-none"
+              style={{
+                left: `${rect.left}%`,
+                top: `${rect.top}%`,
+                width: `${rect.width}%`,
+                height: `${rect.height}%`,
+              }}
+            />
+          </div>
           <span
             className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-pink-600 shadow"
             style={{ left: `${layer.pivot.x * 100}%`, top: `${layer.pivot.y * 100}%` }}

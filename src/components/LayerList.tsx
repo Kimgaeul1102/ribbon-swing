@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useSwingStore } from '../store/useSwingStore'
 import { useLibraryStore } from '../store/useLibraryStore'
 import LayerSettings from './LayerSettings'
+import { layoutFor } from '../utils/frame'
 
 /** 레이어 목록 — 업로드/삭제/순서, [⋮]로 레이어 설정 펼치기 */
 function LayerList() {
@@ -15,6 +16,9 @@ function LayerList() {
   const uploadAsLayers = useLibraryStore((s) => s.uploadAsLayers)
   const inputRef = useRef<HTMLInputElement>(null)
   const [openId, setOpenId] = useState<string | null>(null)
+  const trim = useSwingStore((s) => s.trim)
+  const setTrim = useSwingStore((s) => s.setTrim)
+  const frame = layoutFor(layers, trim)
 
   // 위쪽(앞쪽) 레이어가 목록 위에 오도록
   const sorted = [...layers].sort((a, b) => b.zIndex - a.zIndex)
@@ -73,7 +77,7 @@ function LayerList() {
               ✕
             </button>
            </div>
-           {openId === l.id && <LayerSettings layer={l} onClose={() => setOpenId(null)} />}
+           {openId === l.id && <LayerSettings layer={l} frame={frame} onClose={() => setOpenId(null)} />}
           </li>
         ))}
       </ul>
@@ -96,6 +100,16 @@ function LayerList() {
       >
         + 레이어 추가 (PNG 여러 장 선택 가능)
       </button>
+      <label className="mt-2 flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={trim}
+          onChange={(e) => setTrim(e.target.checked)}
+          className="accent-pink-500"
+        />
+        투명 여백 자동으로 자르기
+      </label>
+      <p className="ml-6 text-xs text-gray-400">같은 캐릭터의 레이어끼리 위치가 어긋나지 않게 함께 잘라요.</p>
     </section>
   )
 }

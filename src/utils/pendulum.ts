@@ -9,24 +9,38 @@ export function pendulumVelocity(t: number, amplitude: number, frequency: number
   return amplitude * Math.exp(-damping * t) * (w * Math.cos(w * t) - damping * Math.sin(w * t))
 }
 
-/** 꿀렁임: 각속도에 비례한 skewX(deg)와 scaleY */
-export function wobbleTransform(wobble: number, angularVelocity: number): { skew: number; scaleY: number } {
-  return {
-    skew: wobble * angularVelocity * 0.05,
-    scaleY: 1 + wobble * Math.abs(angularVelocity) * 0.0005,
+/*
+ * 부드럽고 말랑한 움직임 — 전부 CSS transform(회전·기울임·늘어남)이라 GPU가 처리해서 가볍다.
+ * (SVG 필터로 물결/휨을 그리는 방식은 매 프레임 다시 그려져서 렉이 심해 폐기)
+ */
+const SWAY_SKEW_GAIN = 14 // sway=1, sin(angle)=1일 때 아래쪽이 더 쏠리는 기울기 (deg)
+const JELLY_STRETCH = 0.06 // wobble=1, 최대 속도일 때 세로로 늘어나는 비율
+const JELLY_VELOCITY_REF = 120 // 각속도(deg/s)가 이 정도일 때 최대의 약 76%
+const SPRING_OMEGA = 13 // 스프링 고유 각속도 (rad/s) — 클수록 빨리 따라옴
+const SPRING_ZETA = 0.35 // 감쇠비 — 1 미만이면 목표를 살짝 넘었다 돌아오며 말랑하게 출렁임
+
+/** 아래로 갈수록: 몸이 기운 쪽으로 아래쪽이 더 쏠리게 하는 기울임(skewX, deg). pivot이 위쪽이라 아래로 갈수록 많이 움직임 */
+export function swaySkew(angleDeg: number, sway: number): number {
+  return -Math.sin((angleDeg * Math.PI) / 180) * SWAY_SKEW_GAIN * sway
+}
+
+/** 말랑함: 빨리 움직일 때 세로로 늘어나는 비율 0~JELLY_STRETCH·wobble (멈추면 0). 가로는 부피 유지로 살짝 줄어듦 */
+export function jellyStretch(wobble: number, angularVelocity: number): number {
+  return wobble * JELLY_STRETCH * Math.tanh(Math.abs(angularVelocity) / JELLY_VELOCITY_REF)
+}
+
+/** 부족감쇠 스프링으로 목표를 따라감 (state를 직접 갱신) → 목표를 살짝 넘었다 돌아오며 말랑하게 출렁임. 서브스텝으로 안정적으로 적분 */
+export function stepSpring(
+  state: { x: number; v: number },
+  target: number,
+  dt: number,
+  omega = SPRING_OMEGA,
+  zeta = SPRING_ZETA,
+): void {
+  const n = Math.max(1, Math.ceil(dt * 120))
+  const h = dt / n
+  for (let i = 0; i < n; i++) {
+    state.v += (omega * omega * (target - state.x) - 2 * zeta * omega * state.v) * h
+    state.x += state.v * h
   }
-}
-
-/** 아래로 갈수록 더 흔들리는 효과: 이미지를 가로 띠로 나눠 띠마다 다르게 밀어 휘어 보이게 함 */
-export const SWAY_STRIPS = 32
-const SWAY_GAIN = 60 // sway=1, sin(angle)=1일 때 맨 아래 띠의 이동량 (이미지 너비 %)
-
-/** depth(0=pivot, 1=맨 아래)에서의 목표 가로 이동량 (이미지 너비 %). 깊이의 제곱에 비례 → 아래쪽이 훨씬 많이 */
-export function swayShift(angleDeg: number, depth: number, sway: number): number {
-  return -Math.sin((angleDeg * Math.PI) / 180) * SWAY_GAIN * sway * depth * depth
-}
-
-/** 깊을수록 느슨한 스프링 계수(60fps 기준 프레임당) → 아래쪽이 더 늦게, 더 부드럽게 따라옴 */
-export function swayStiffness(depth: number): number {
-  return 0.4 - 0.32 * depth
 }

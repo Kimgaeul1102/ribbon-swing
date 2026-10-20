@@ -1,14 +1,17 @@
 import type { Expression, Layer } from '../store/useSwingStore'
 import { newId } from './id'
+import type { Box, Size } from './trim'
 
-type LayerPreset = Pick<Layer, 'pivot' | 'delay' | 'amplitudeMul' | 'stiffness'>
+type LayerPreset = Pick<Layer, 'pivot' | 'delay' | 'speedMul' | 'amplitudeMul' | 'stiffness' | 'waveMul' | 'swayMul'>
 
 const TOP_CENTER = { x: 0.5, y: 0 }
 
-const BODY: LayerPreset = { pivot: TOP_CENTER, delay: 0, amplitudeMul: 1.0, stiffness: 1.0 }
-const HAIR: LayerPreset = { pivot: TOP_CENTER, delay: 80, amplitudeMul: 1.4, stiffness: 0.15 }
-const TIE: LayerPreset = { pivot: TOP_CENTER, delay: 120, amplitudeMul: 1.8, stiffness: 0.1 }
-const ACCESSORY: LayerPreset = { pivot: TOP_CENTER, delay: 50, amplitudeMul: 1.2, stiffness: 0.3 }
+const EFFECTS = { speedMul: 1, waveMul: 1, swayMul: 1 } // 효과는 기본적으로 전체 설정 그대로
+
+const BODY: LayerPreset = { pivot: TOP_CENTER, delay: 0, amplitudeMul: 1.0, stiffness: 1.0, ...EFFECTS }
+const HAIR: LayerPreset = { pivot: TOP_CENTER, delay: 80, amplitudeMul: 1.4, stiffness: 0.15, ...EFFECTS }
+const TIE: LayerPreset = { pivot: TOP_CENTER, delay: 120, amplitudeMul: 1.8, stiffness: 0.1, ...EFFECTS }
+const ACCESSORY: LayerPreset = { pivot: TOP_CENTER, delay: 50, amplitudeMul: 1.2, stiffness: 0.3, ...EFFECTS }
 
 const RULES: { pattern: RegExp; preset: LayerPreset }[] = [
   { pattern: /hair|머리|헤어/i, preset: HAIR },
@@ -31,7 +34,7 @@ export function guessExpression(name: string): Expression {
 }
 
 export function createLayer(
-  asset: { id: string; name: string; url: string },
+  asset: { id: string; name: string; url: string; canvas: Size; bbox: Box },
   zIndex: number,
   characterId: string,
 ): Layer {
@@ -42,6 +45,8 @@ export function createLayer(
     assetId: asset.id,
     name: asset.name,
     src: asset.url,
+    canvas: asset.canvas,
+    bbox: asset.bbox,
     zIndex,
     enabled: true,
     ...guessPreset(asset.name),

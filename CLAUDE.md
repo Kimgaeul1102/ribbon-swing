@@ -30,19 +30,13 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - 사용자가 캐릭터를 드래그하거나 "밀기" 버튼을 누르면 `t = 0`으로 리셋하고 다시 시작
 - 회전 기준점(`transform-origin`)은 **리본이 캐릭터에 묶인 지점** (기본값: 상단 중앙)
 
-### 3.2 꿀렁임 (젤리 효과)
-- 메인 각도의 **각속도**에 비례해 `skewX`와 `scaleY`를 미세하게 변화
-
-skew = wobble · angularVelocity · 0.05
-scaleY = 1 + wobble · |angularVelocity| · 0.0005
-
-- `wobble` 슬라이더 0~1
-
-### 3.2.1 아래로 갈수록 (sway)
-- 레이어 이미지를 가로 띠 32장(`SWAY_STRIPS`)으로 겹쳐 그리고(clip-path), 띠마다 `translateX`를 다르게 줘서 아래쪽이 더 휘어 보이게 함
-- 목표 이동량 = `-sin(layerAngle) · 60 · sway · depth²` (depth: pivot 0 → 맨 아래 1)
-- 띠마다 스프링 추종, 깊을수록 느슨(`0.4 − 0.32·depth`) → 아래쪽이 더 늦게/부드럽게 따라옴
-- `sway` 슬라이더 0~1 (0이면 띠 없이 이미지 1장만 렌더)
+### 3.2 말랑함 + 아래로 갈수록 (전부 CSS transform — 가벼움)
+> SVG 필터(feDisplacementMap)로 물결/휨을 그리던 방식은 매 프레임 다시 그려져서 렉이 심해 폐기했다. 필터/띠 방식은 다시 쓰지 말 것.
+- 레이어 transform: `rotate(angle) skewX(sway) scale(1 − jelly·0.6, 1 + jelly)`, `transform-origin`은 pivot, `will-change: transform`
+- **아래로 갈수록(sway)**: `skewX = −sin(layerAngle) · 14° · sway` 를 부족감쇠 스프링(`stepSpring`, ω=13, ζ=0.35)으로 따라감. pivot이 위쪽이라 아래로 갈수록 많이 움직이고, 스프링 덕에 부드럽게 출렁임
+- **말랑함(wobble)**: `jelly = wobble · 0.06 · tanh(|각속도|/120)` 를 스프링(ω=16, ζ=0.3)으로 따라감 → 빠르게 움직일 때 세로로 늘어났다가 통통 튀며 돌아옴 (멈추면 0)
+- `wobble`, `sway` 슬라이더 0~1
+- 투명 여백 자르기: 업로드 시 이미지의 불투명 영역(bbox)을 계산해 저장. 한 캐릭터의 레이어 bbox 합집합(`utils/frame.ts`)만 화면에 맞춤. 파일 자체는 안 자르므로 레이어끼리 어긋나지 않음. pivot은 잘린 영역 기준 비율. 캔버스 크기가 서로 다르면 자르지 않음
 - 인원 간격(`spacing`, 0.2~1)은 `utils/layout.ts`가 계산. 줄이면 인원이 가운데로 모임
 
 ### 3.3 레이어별 2차 움직임 (Follow-through)
@@ -55,13 +49,16 @@ type Layer = {
   zIndex: number;
   pivot: { x: number; y: number };   // 0~1 비율, 회전 기준점
   delay: number;         // 메인보다 몇 ms 늦게 반응 (0~300)
+  speedMul: number;      // 속도 배율 (0.5~1.5) — 낮을수록 천천히
   amplitudeMul: number;  // 메인 진폭 배율 (0.5~2.0)
-  stiffness: number;     // 스프링 강성 (0.05~0.5) — 낮을수록 흐물흐물
+  stiffness: number;     // 스프링 강성 (0.05~1) — 낮을수록 흐물흐물
+  waveMul: number;       // 꿀렁임(물결) 배율 (0~2) — 전체 슬라이더에 곱함
+  swayMul: number;       // 아래로 갈수록 배율 (0~2) — 전체 슬라이더에 곱함
   enabled: boolean;
 };
 ```
 - 구현은 **스프링 추종**: 매 프레임 `layerAngle += (targetAngle − layerAngle) · stiffness`
-  여기서 `targetAngle`은 `delay`만큼 과거의 메인 각도 (링버퍼로 보관)
+  여기서 `targetAngle`은 레이어 자신의 진자 값: `pendulumAngle((now − start − delay) · speedMul) · amplitudeMul`
 - 프리셋 예시
   - body: delay 0, mul 1.0, stiffness 1.0
   - hair: delay 80, mul 1.4, stiffness 0.15
@@ -86,7 +83,7 @@ type Layer = {
 
 - **모바일(< 768px)**: 컨트롤 패널이 하단 시트로 내려감
 - 리본은 SVG `path`로 그리고, 끝점이 캐릭터 pivot을 따라가도록 매 프레임 갱신
-- 레이어 `[⋮]` 클릭 시 해당 레이어의 delay / amplitudeMul / stiffness / pivot 편집 팝오버
+- 레이어 `[⋮]` 클릭 시 해당 레이어의 delay / speedMul / amplitudeMul / stiffness / waveMul / swayMul / pivot 편집 팝오버
 
 ## 5. 폴더 구조
 
@@ -105,10 +102,11 @@ LayerSettings.tsx # 개별 레이어 설정 팝오버
 CharacterBar.tsx # 인원 탭 (+ 인원 추가/이름 변경/삭제). 선택된 인원이 Layers·세트의 편집 대상
 LibraryPanel.tsx # 보관함(이미지 재사용) + 저장된 세트(선택 인원의 레이어 구성 저장·불러오기)
 utils/pendulum.ts # 수식 함수 (순수 함수, 테스트 대상)
-utils/ringBuffer.ts # delay용 각도 기록 버퍼
 utils/assetDb.ts # IndexedDB 래퍼 (보관함 이미지 / 저장된 세트 영구 저장)
 utils/layerPresets.ts # 파일명으로 body/hair/tie/accessory 프리셋 추측
 utils/layerElements.ts # 레이어 id → DOM 레지스트리 (rAF 루프용)
+utils/frame.ts # 캐릭터 프레임(투명 여백 자르기) 계산
+utils/trim.ts # 이미지 불투명 영역(bbox) 측정
 store/useLibraryStore.ts # 보관함·세트 (같은 이미지는 해시로 중복 방지)
 
 

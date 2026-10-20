@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { newId } from '../utils/id'
+import type { Box, Size } from '../utils/trim'
 
 export type Character = {
   id: string
@@ -15,14 +16,19 @@ export type Layer = {
   id: string
   characterId: string // 어느 캐릭터(인원)에 속한 레이어인지
   expression: Expression
+  canvas: Size // 이미지 원본 크기 (px)
+  bbox: Box // 내용이 있는 영역 (원본 px 좌표) — 투명 여백 자르기용
   assetId: string // 보관함 이미지 id — 같은 이미지를 여러 번/여러 세트에서 재사용
   name: string // "body", "hair", "tie" ...
   src: string // object URL
   zIndex: number
   pivot: { x: number; y: number } // 0~1 비율, 회전 기준점
   delay: number // 메인보다 몇 ms 늦게 반응 (0~300)
+  speedMul: number // 속도 배율 (0.5~1.5) — 1보다 작으면 본체보다 천천히 흔들림
   amplitudeMul: number // 메인 진폭 배율 (0.5~2.0)
-  stiffness: number // 스프링 강성 (0.05~0.5) — 낮을수록 흐물흐물
+  stiffness: number // 스프링 강성 (0.05~1) — 낮을수록 흐물흐물
+  waveMul: number // 말랑함 배율 (0~2) — 전체 말랑함 슬라이더에 곱해짐 (저장된 세트 호환 때문에 이름은 waveMul 유지)
+  swayMul: number // 아래로 갈수록 배율 (0~2) — 전체 슬라이더에 곱해짐
   enabled: boolean
 }
 
@@ -30,12 +36,13 @@ type SwingState = {
   amplitude: number // 세기 (deg, 0~45)
   frequency: number // 속도 (Hz, 0.2~2.0)
   damping: number // 감쇠 (0~1)
-  wobble: number // 꿀렁임 (0~1)
-  sway: number // 아래로 갈수록 더 흔들림 (0~1)
+  wobble: number // 말랑함 (0~1) — 빠르게 움직일 때 세로로 늘어났다 통통 튀며 돌아옴
+  sway: number // 아래로 갈수록 더 흔들림 (0~1) — 아래쪽이 더 쏠리는 기울임
   spacing: number // 인원 간 간격 (0.2~1, 1이면 무대를 균등 분할)
   pushGap: number // "차례대로 밀기"에서 인원 사이 간격 (초)
   reactionSec: number // 밀린 표정을 유지하는 시간 (초)
   popEffect: boolean // 뿅뿅 효과 on/off
+  trim: boolean // 투명 여백 자동으로 자르기
   characters: Character[]
   activeCharacterId: string // 레이어 편집 대상
   layers: Layer[]
@@ -43,6 +50,7 @@ type SwingState = {
   pushAll: () => void
   pushSequential: () => void
   setPopEffect: (on: boolean) => void
+  setTrim: (on: boolean) => void
   kickCharacter: (id: string) => void
   addCharacter: () => void
   removeCharacter: (id: string) => void
@@ -66,6 +74,7 @@ export const useSwingStore = create<SwingState>((set) => ({
   pushGap: 0.3,
   reactionSec: 1.2,
   popEffect: true,
+  trim: true,
   characters: [first],
   activeCharacterId: first.id,
   layers: [],
@@ -87,6 +96,7 @@ export const useSwingStore = create<SwingState>((set) => ({
       }
     }),
   setPopEffect: (on) => set({ popEffect: on }),
+  setTrim: (on) => set({ trim: on }),
   kickCharacter: (id) =>
     set((s) => ({
       characters: s.characters.map((c) => (c.id === id ? { ...c, swingStartedAt: performance.now() } : c)),

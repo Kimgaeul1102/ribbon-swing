@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { pendulumAngle, pendulumVelocity, swayShift, swayStiffness } from './pendulum'
+import {
+  pendulumAngle,
+  pendulumVelocity,
+  jellyStretch,
+  stepSpring,
+  swaySkew,
+} from './pendulum'
 
 describe('pendulumAngle', () => {
   it('t=0이면 0도', () => {
@@ -26,17 +32,30 @@ describe('pendulumVelocity', () => {
   })
 })
 
-describe('sway', () => {
-  it('pivot(depth 0)은 안 움직이고 아래로 갈수록 더 많이 움직임', () => {
-    expect(swayShift(20, 0, 1)).toBeCloseTo(0)
-    expect(Math.abs(swayShift(20, 1, 1))).toBeGreaterThan(Math.abs(swayShift(20, 0.5, 1)))
+describe('말랑한 움직임', () => {
+  it('아래로 갈수록: 몸이 기운 반대 방향으로 기울여 아래가 더 쏠리고, sway 0이면 없음', () => {
+    expect(swaySkew(20, 1)).toBeLessThan(0)
+    expect(swaySkew(-20, 1)).toBeGreaterThan(0)
+    expect(swaySkew(30, 0)).toBeCloseTo(0)
   })
 
-  it('sway 0이면 효과 없음', () => {
-    expect(swayShift(30, 1, 0)).toBeCloseTo(0)
+  it('말랑함: 멈추면 0, 빠를수록 늘어나되 상한을 넘지 않음', () => {
+    expect(jellyStretch(1, 0)).toBe(0)
+    expect(jellyStretch(1, 50)).toBeLessThan(jellyStretch(1, 150))
+    expect(jellyStretch(1, 100000)).toBeLessThanOrEqual(0.06)
+    expect(jellyStretch(0, 300)).toBe(0)
+    expect(jellyStretch(1, -150)).toBeCloseTo(jellyStretch(1, 150))
   })
 
-  it('아래쪽일수록 스프링이 느슨함', () => {
-    expect(swayStiffness(1)).toBeLessThan(swayStiffness(0))
+  it('스프링은 목표에 수렴하고 중간에 한 번 넘어감(말랑)', () => {
+    const s = { x: 0, v: 0 }
+    let peak = 0
+    for (let i = 0; i < 120; i++) {
+      stepSpring(s, 10, 1 / 60)
+      peak = Math.max(peak, s.x)
+    }
+    expect(peak).toBeGreaterThan(10)
+    for (let i = 0; i < 600; i++) stepSpring(s, 10, 1 / 60)
+    expect(s.x).toBeCloseTo(10, 1)
   })
 })

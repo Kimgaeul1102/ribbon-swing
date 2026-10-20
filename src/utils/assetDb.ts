@@ -1,12 +1,22 @@
 import type { Layer } from '../store/useSwingStore'
+import type { Box, Size } from './trim'
 
 /** 보관함(이미지)과 저장된 세트를 브라우저 IndexedDB에 보관 — 새로고침/재방문해도 유지됨 */
 const DB_NAME = 'ribbon-swing'
 const DB_VERSION = 1
 
-export type StoredAsset = { id: string; name: string; hash: string; blob: Blob; createdAt: number }
+// canvas/bbox는 이전 버전에서 저장한 이미지에는 없음 → 불러올 때 계산해서 채움
+export type StoredAsset = {
+  id: string
+  name: string
+  hash: string
+  blob: Blob
+  createdAt: number
+  canvas?: Size
+  bbox?: Box
+}
 
-export type StoredSetLayer = Omit<Layer, 'id' | 'src' | 'characterId'>
+export type StoredSetLayer = Omit<Layer, 'id' | 'src' | 'characterId' | 'canvas' | 'bbox'>
 
 /** 한 캐릭터의 레이어 구성(옷 세트). 이전 버전이 저장한 params 필드는 무시한다 */
 export type StoredSet = {

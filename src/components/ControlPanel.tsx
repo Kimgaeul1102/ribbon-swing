@@ -12,7 +12,7 @@ const SLIDERS: SliderDef[] = [
   { key: 'amplitude', label: '세기', min: 0, max: 45, step: 1 },
   { key: 'frequency', label: '속도', min: 0.2, max: 2, step: 0.05 },
   { key: 'damping', label: '감쇠', min: 0, max: 1, step: 0.01 },
-  { key: 'wobble', label: '꿀렁임', min: 0, max: 1, step: 0.01 },
+  { key: 'wobble', label: '말랑함', min: 0, max: 1, step: 0.01 },
   { key: 'sway', label: '아래로 갈수록', min: 0, max: 1, step: 0.01 },
 ]
 
