@@ -12,6 +12,37 @@ body {
   overscroll-behavior: none;
 }
 
+/* 다크 모드(검정 + 푸른색): html에 .dark가 붙으면 Tailwind 색 변수를 바꿔서 기존 pink/gray 클래스가 그대로 푸른 톤이 됨 */
+.dark {
+  color-scheme: dark;
+  color: #dbe7ff;
+  --color-pink-50: #0e1a33;
+  --color-pink-100: #13244a;
+  --color-pink-200: #1f3a70;
+  --color-pink-300: #2f5cab;
+  --color-pink-400: #3b82f6;
+  --color-pink-500: #2563eb;
+  --color-pink-600: #60a5fa;
+  --color-pink-700: #93c5fd;
+  --color-gray-50: #101b33;
+  --color-gray-300: #34496f;
+  --color-gray-400: #7f8fae;
+  --color-gray-500: #9fb0cc;
+  --color-gray-600: #c3d0e6;
+  --color-orange-50: #35200f;
+  --color-orange-100: #55300f;
+  --color-orange-200: #7a4012;
+  --color-orange-700: #fdba74;
+  --color-red-50: #3a1219;
+  --color-red-600: #fca5a5;
+}
+.dark body {
+  background: linear-gradient(160deg, #04070f 0%, #081633 100%);
+}
+.dark .bg-white {
+  background-color: #0a1124;
+}
+
 /* 뿅뿅 효과: 가운데에서 톡 튀어나와 커졌다가 흩어지며 사라짐 */
 @keyframes pop-burst {
   0% {

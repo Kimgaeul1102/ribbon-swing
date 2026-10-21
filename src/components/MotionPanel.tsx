@@ -1,5 +1,6 @@
 import { useSwingStore } from '../store/useSwingStore'
 import SliderRow from './SliderRow'
+import MotionSlots from './MotionSlots'
 
 /** 움직임 탭 — 흔들림의 세기/속도/감쇠, 말랑함, 아래로 갈수록, 계속 흔들기 세기, 밀기 반응 */
 function MotionPanel() {
@@ -7,6 +8,7 @@ function MotionPanel() {
 
   return (
     <section>
+      <MotionSlots />
       <h2 className="mb-3 font-bold text-pink-600">움직임</h2>
       <SliderRow label="세기" value={s.amplitude} min={0} max={45} step={1} onChange={(v) => s.setParam('amplitude', v)} />
       <SliderRow label="속도" value={s.frequency} min={0.2} max={2} step={0.05} onChange={(v) => s.setParam('frequency', v)} />

@@ -63,6 +63,7 @@ type SwingState = {
   pushGap: number // "차례대로 밀기"에서 인원 사이 간격 (초)
   reactionSec: number // 밀린 표정을 유지하는 시간 (초)
   popEffect: boolean // 뿅뿅 효과 on/off
+  fireOn: boolean // 발밑 불 (켜져 있는 동안 캐릭터가 서서히 익음). 컨셉에는 저장하지 않음
   trim: boolean // 투명 여백 자동으로 자르기
   idleOn: boolean // 계속 흔들기 (밀지 않아도 자연스럽게 계속 흔들림)
   idleStrength: number // 계속 흔들기 세기 (deg, 0~20)
@@ -83,6 +84,7 @@ type SwingState = {
   pushAll: () => void
   pushSequential: () => void
   setPopEffect: (on: boolean) => void
+  setFireOn: (on: boolean) => void
   setTrim: (on: boolean) => void
   setIdleOn: (on: boolean) => void
   setRibbonAsset: (id: string | null) => void
@@ -126,6 +128,7 @@ export const useSwingStore = create<SwingState>((set) => ({
   pushGap: 0.3,
   reactionSec: 1.2,
   popEffect: true,
+  fireOn: false,
   trim: true,
   idleOn: false,
   idleStrength: 6,
@@ -160,6 +163,7 @@ export const useSwingStore = create<SwingState>((set) => ({
       }
     }),
   setPopEffect: (on) => set({ popEffect: on }),
+  setFireOn: (on) => set({ fireOn: on }),
   setTrim: (on) => set({ trim: on }),
   setIdleOn: (on) => set({ idleOn: on }),
   // 리본 그림을 고르거나 해제하면 굵기도 어울리는 기본값으로 (그림 → 넓게, 기본 끈 → 가늘게). 이미 그림이 있을 땐 굵기 유지

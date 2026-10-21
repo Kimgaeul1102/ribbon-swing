@@ -28,6 +28,7 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - `f` = 속도(frequency, Hz, 0.2~2.0)
 - `d` = 감쇠(damping, 0~1). 0이면 영원히 흔들림, 클수록 빨리 멈춤
 - **밀기는 리셋이 아니라 충격을 더하는 방식**: 레이어마다 감쇠 진동 상태(각도 x, 각속도 v)를 시뮬레이션하고(`oscillator`/`stepSpring`), 밀면 `v += A·ω` (`applyPush`, 지금 움직이는 방향으로, 멈춰 있으면 오른쪽, 속도 상한 있음). 정지 상태에서 한 번 밀면 위 수식과 같은 궤적이고, 흔들리는 중에 또 누르면 초반으로 돌아가지 않고 그 위에 힘이 얹힘
+- **밀기 방향은 인원마다 한 번만 정함**(끈의 기준 진동이 정하고 레이어들은 지연 후 같은 방향으로 밀림). 레이어마다 자기 속도 부호로 정하면 지연된 레이어(머리 등)가 몸·끈과 반대로 움직임
 - **멈추기**: 계속 흔들기를 끄고, 진동에 브레이크(속도·각도 감쇠 1.2초)를 걸고, 예약된 밀기(차례대로 밀기)를 취소 (`stopAt` 변화를 루프가 감지)
 - (마우스 드래그로 밀기는 미구현 — 필요 없다고 해서 뺌)
 - 회전 기준점(`transform-origin`)은 **리본이 캐릭터에 묶인 지점** (기본값: 상단 중앙)
@@ -40,7 +41,7 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - `wobble`, `sway` 슬라이더 0~1
 - **레이어 폴더 + 투명 여백 자르기**: 한 번에 올린 이미지는 폴더(`LayerGroup`) 하나로 묶여 같은 여백(멤버 불투명 영역 bbox 합집합 = `crop`)으로 함께 잘린다. crop은 폴더를 만들 때 한 번 계산해서 **고정**(`utils/groups.ts computeCrop`) — 나중에 폴더를 더하거나 레이어를 숨겨도 이미 올린 그림이 움직이지 않음. 파일 자체는 안 자르고 화면 위치만 옮김. 캔버스 크기가 제각각이면 그 폴더는 안 자름
 - **프레임(`utils/frame.ts`)**: 인원의 **맨 처음 올린 폴더**(`createdAt` 최소)의 crop이 화면 크기·위치의 기준. 같은 캔버스 크기의 다른 폴더는 원본 위치 그대로 겹쳐 입혀지고(옷 폴더 등), 크기가 다른 폴더는 자기 영역을 프레임 높이에 맞춰 가운데 정렬. pivot은 프레임 기준 비율
-- 레이어 목록은 폴더 단위(접고 펴기, 폴더 전체 켜고 끄기, ▲▼ 폴더 이동, 삭제, 이름 변경). 폴더 안 레이어는 ⋮로 따로 설정. 세트에도 폴더 구성이 저장됨(폴더 생기기 전 세트는 세트 전체가 폴더 하나)
+- 레이어 목록은 폴더 단위(접고 펴기, 폴더 전체 켜고 끄기, ▲▼ 폴더 이동, 삭제, 이름 변경). 폴더 안 레이어 줄을 누르면 그 레이어만 조절하는 떠 있는 팝업(`LayerSettings`, 배경 안 어둡게)이 열림. 세트에도 폴더 구성이 저장됨(폴더 생기기 전 세트는 세트 전체가 폴더 하나)
 - 인원 간격(`spacing`, 0.2~1)은 `utils/layout.ts`가 계산. 줄이면 인원이 가운데로 모임
 
 ### 3.2.2 계속 흔들기 (idle)
@@ -60,6 +61,27 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - **배경**: 배경색 + 배경 그림(`kind: 'background'`, 맞춤 cover/contain/fill). 줌 묶음 바깥에 그려서 줌의 영향을 안 받음
 - 보관함 이미지는 용도(`kind`: layer/ribbon/background)별로 나뉨. 같은 파일이라도 용도가 다르면 따로 저장(해시+kind로 중복 판별). 이전 버전에서 저장한 이미지는 layer
 - **컨셉(장면 전체)**: `pickSceneParams`(슬라이더·리본·배경 설정) + 모든 인원/폴더/레이어를 IndexedDB `scenes`에 저장 (`saveScene`/`applyScene`). 불러오면 통째로 교체. DB 버전 2(scenes 저장소 추가, 기존 데이터 유지)
+
+### 3.2.5 MP4 / GIF 저장 (저장 탭)
+- **화면을 녹화하지 않는다.** 움직임 계산(`sim/swingSim.ts`, 순수 함수)을 일정한 가상 시간 간격으로 돌리고 `export/renderScene.ts`가 canvas에 직접 그린다 → 실시간 성능과 무관, 매번 같은 결과, 폰에서도 동일. 화면 루프(`hooks/useSwingLoop.ts`)도 같은 sim을 실제 시간으로 돌릴 뿐
+- **renderScene은 화면 레이아웃 규칙을 그대로 따라야 한다**: 열 나누기(`characterColumn`), 끈 길이/위치, 그림 박스 높이 70%, 줌(위쪽 중앙), 변형 순서 rotate→skewX→scale, 끈 회전(열 위쪽 가운데). Stage/CharacterLayer의 레이아웃을 바꾸면 renderScene도 같이 바꿀 것
+- 한 번 밀기만 저장(계속 흔들기 제외). 길이 = 마지막 인원이 밀린 뒤 모든 흔들림이 1° 아래로 가라앉아 0.25초 유지되는 시점 + 꼬리 0.3초, 최대 길이(기본 8초)에서 자름 (`export/plan.ts`). 밀기 전 0.15초 정지 구간
+- MP4: WebCodecs `VideoEncoder`(H.264) + `mp4-muxer`. 미지원 브라우저는 `MP4_UNSUPPORTED` 안내. GIF: `gifenc`, 샘플 프레임으로 만든 공통 256색 팔레트(깜빡임 방지)
+- 화면 비율: 지금 화면(`[data-stage]` 크기) / 9:16 / 1:1 / 16:9 (나머지는 높이 720 화면px 기준). H.264 때문에 출력 크기는 짝수
+- 뿅뿅 효과 값은 `utils/popParticles.ts`를 화면(CSS)과 저장(canvas)이 같이 씀
+
+### 3.2.6 불 붙이기 (재미 효과)
+- 위쪽 고정 버튼 `🔥 불 붙이기`(`fireOn`, 컨셉에는 저장 안 함): 켜면 인원마다 발밑(정지 상태 그림 맨 아래, 끈과 함께 흔들리지 않음)에 불꽃, 켜져 있는 동안 캐릭터가 서서히 익음(`cookStep`, 시간상수 12초 → 노릇 → 까맣게). 꺼도 익은 정도는 유지, `생으로 되돌리기`로 초기화
+- 불꽃 그리기(`utils/fire.ts drawFlames`)는 시간(초)만으로 정해지는 순수 함수라 화면(`Fire.tsx` canvas)과 저장(`renderScene.ts`)이 같이 씀. 위치/크기 비율(`FIRE_*`)도 공유
+- 익은 정도는 React state가 아니라 `utils/fire.ts`의 `getCook/setCook`(루프가 갱신). 화면은 `[data-stage]`의 CSS 변수 `--cook-filter`를 그림 박스 `filter`가 읽음(값이 바뀔 때만 씀). 저장은 현재 익은 정도에서 시작해 `ctx.filter`로 그림에만 적용(끈 제외, 필터 미지원 브라우저는 색 변화만 빠짐)
+
+### 3.2.8 움직임 슬롯
+- 움직임 탭 맨 위(`MotionSlots.tsx`): 지금 슬라이더 값을 이름 붙여 저장 / 불러오기 / 덮어쓰기 / 삭제. 값 목록은 `utils/motionSlots.ts MOTION_KEYS`(세기·속도·감쇠·말랑함·아래로 갈수록·계속 흔들기 세기·끈 흔들림·밀기 간격·표정 유지·뿅뿅). 레이어별 설정·그림·배경·줌은 안 들어감(그건 세트/컨셉)
+- 저장 위치는 localStorage `ribbon-swing:motions`(값이 작은 JSON). 키를 늘리면 옛 슬롯은 값이 빠져 걸러지므로(`parseSlots`), 키를 바꿀 때는 호환 처리를 같이 할 것. 불러오기는 `useSwingStore.setState(values)`
+
+### 3.2.7 다크 모드
+- 위쪽 고정 영역의 `🌙 다크 모드` 토글(`App.tsx`, localStorage `ribbon-swing:theme`, 기본 밝게). 켜면 `<html class="dark">` → `index.css`가 Tailwind 색 변수(`--color-pink-*`, `gray-*`, `orange-*`, `red-*`)를 검정+푸른 톤으로 덮어씀. 그래서 컴포넌트는 `dark:` 클래스 없이 기존 `pink-*` 클래스를 그대로 쓰면 됨(새 색 클래스를 쓰면 이 목록에 변수를 추가). `bg-white`만 따로 덮어씀(`text-white`는 그대로 흰색이어야 해서 `--color-white`는 안 건드림)
+- 무대(배경색/그림)는 컨셉의 일부라 다크 모드와 무관, 저장 결과에도 영향 없음
 
 ### 3.3 레이어별 2차 움직임 (Follow-through)
 각 레이어는 메인 각도를 그대로 쓰지 않고 **지연 + 배율 + 자체 감쇠**를 거친다.
@@ -134,6 +156,8 @@ utils/assetDb.ts # IndexedDB 래퍼 (보관함 이미지 / 저장된 세트 영�
 utils/layerPresets.ts # 파일명으로 body/hair/tie/accessory 프리셋 추측
 utils/layerElements.ts # 레이어 id → DOM 레지스트리 (rAF 루프용)
 utils/frame.ts # 캐릭터 프레임(기준 폴더의 자른 영역) 계산
+sim/swingSim.ts # 움직임 계산 (순수 함수, 화면/저장 공용)
+export/ # MP4·GIF 저장: plan(길이) / renderScene(canvas 렌더) / encoders / exportSwing
 utils/groups.ts # 레이어 폴더: 자를 영역 계산, 폴더 순서 이동
 utils/trim.ts # 이미지 불투명 영역(bbox) 측정
 store/useLibraryStore.ts # 보관함·세트 (같은 이미지는 해시로 중복 방지)

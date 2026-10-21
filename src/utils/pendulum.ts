@@ -24,9 +24,17 @@ export function oscillator(frequency: number, damping: number, speedMul: number)
   return { w, omega, zeta: d / omega }
 }
 
-/** 밀기 충격: 지금 움직이는 방향으로 속도를 더함 (멈춰 있으면 오른쪽). 세기=amplitude(deg) */
-export function applyPush(state: { x: number; v: number }, amplitude: number, w: number): void {
-  const dir = state.v >= 0 ? 1 : -1
+/** 지금 움직이는 방향 (멈춰 있으면 오른쪽 = 1) */
+export function pushDirection(state: { v: number }): 1 | -1 {
+  return state.v >= 0 ? 1 : -1
+}
+
+/**
+ * 밀기 충격: 속도를 더함. 세기=amplitude(deg).
+ * dir을 안 주면 지금 움직이는 방향. 한 인원의 끈·레이어들은 같은 방향으로 밀려야 해서 호출하는 쪽이 한 번 정해 넘겨준다
+ * (레이어마다 따로 정하면 지연된 레이어가 반대 방향으로 밀려 몸과 반대로 움직임).
+ */
+export function applyPush(state: { x: number; v: number }, amplitude: number, w: number, dir = pushDirection(state)): void {
   const vmax = Math.min(amplitude * 2.2, MAX_SWING_DEG) * w
   state.v = Math.max(-vmax, Math.min(vmax, state.v + dir * amplitude * w))
 }

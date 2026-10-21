@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyPush,
+  pushDirection,
   idleAngle,
   oscillator,
   pendulumAngle,
@@ -112,5 +113,22 @@ describe('밀기 진동 (충격을 더하는 방식)', () => {
 
   it('속도 배율이 낮으면 천천히 진동', () => {
     expect(oscillator(0.8, 0.2, 0.5).w).toBeCloseTo(oscillator(0.8, 0.2, 1).w / 2)
+  })
+})
+
+describe('밀기 방향', () => {
+  it('방향을 정해 주면 레이어의 현재 속도와 상관없이 그 방향으로 밀림 (몸과 반대로 움직이는 것 방지)', () => {
+    const { w } = oscillator(0.8, 0.2, 1)
+    const hair = { x: 0, v: -30 } // 지연된 레이어가 반대 방향으로 움직이는 중
+    applyPush(hair, 20, w, 1)
+    expect(hair.v).toBeGreaterThan(0)
+    const own = { x: 0, v: -30 }
+    applyPush(own, 20, w) // 방향을 안 주면 예전처럼 자기 방향
+    expect(own.v).toBeLessThan(-30)
+  })
+
+  it('멈춰 있으면 오른쪽', () => {
+    expect(pushDirection({ v: 0 })).toBe(1)
+    expect(pushDirection({ v: -1 })).toBe(-1)
   })
 })

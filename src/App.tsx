@@ -8,6 +8,7 @@ import MotionPanel from './components/MotionPanel'
 import RibbonPanel from './components/RibbonPanel'
 import ScreenPanel from './components/ScreenPanel'
 import ScenePanel from './components/ScenePanel'
+import ExportPanel from './components/ExportPanel'
 import { useLibraryStore } from './store/useLibraryStore'
 
 const TABS = [
@@ -16,11 +17,22 @@ const TABS = [
   { id: 'ribbon', label: '리본' },
   { id: 'screen', label: '배경·화면' },
   { id: 'scene', label: '컨셉' },
+  { id: 'export', label: '저장' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
 
 const TAB_KEY = 'ribbon-swing:tab'
+const THEME_KEY = 'ribbon-swing:theme'
+
+/** 저장된 화면 모드 (기본: 밝게). 저장소를 못 쓰는 환경에서도 동작하도록 try/catch */
+function loadDark(): boolean {
+  try {
+    return localStorage.getItem(THEME_KEY) === 'dark'
+  } catch {
+    return false
+  }
+}
 
 /** 마지막으로 보던 탭을 기억 (저장소를 못 쓰는 환경에서도 동작하도록 try/catch) */
 function loadTab(): TabId {
@@ -36,6 +48,17 @@ function loadTab(): TabId {
 function App() {
   const initLibrary = useLibraryStore((s) => s.init)
   const [tab, setTab] = useState<TabId>(loadTab)
+  const [dark, setDark] = useState(loadDark)
+
+  // 다크 모드: html에 .dark를 붙이면 index.css가 색을 푸른 톤으로 바꿈
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    try {
+      localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light')
+    } catch {
+      /* 무시 */
+    }
+  }, [dark])
 
   useEffect(() => {
     void initLibrary()
@@ -58,6 +81,17 @@ function App() {
       {/* 모바일(<768px)에서는 하단 시트, 데스크톱에서는 우측 패널. 위쪽 버튼 줄은 어느 탭에서든 보임 */}
       <aside className="flex max-h-[50%] w-full flex-col border-t border-pink-200 bg-white md:max-h-none md:w-80 md:border-l md:border-t-0">
         <div className="border-b border-pink-100 p-3">
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={dark}
+              onClick={() => setDark(!dark)}
+              className="rounded-full border border-pink-300 px-3 py-0.5 text-xs text-pink-600 hover:bg-pink-50"
+            >
+              {dark ? '☀️ 밝게' : '🌙 다크 모드'}
+            </button>
+          </div>
           <ActionBar />
         </div>
         <nav className="flex shrink-0 overflow-x-auto border-b border-pink-100" role="tablist">
@@ -90,6 +124,7 @@ function App() {
           {tab === 'ribbon' && <RibbonPanel />}
           {tab === 'screen' && <ScreenPanel />}
           {tab === 'scene' && <ScenePanel />}
+          {tab === 'export' && <ExportPanel />}
         </div>
       </aside>
     </div>

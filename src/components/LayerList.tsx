@@ -29,6 +29,7 @@ function LayerList() {
   const setTrim = useSwingStore((s) => s.setTrim)
 
   const layers = allLayers.filter((l) => l.characterId === activeId)
+  const openLayer = layers.find((l) => l.id === openId) ?? null
   const charGroups = allGroups.filter((g) => g.characterId === activeId)
   const frame = layoutFor(charGroups, layers, trim)
   // 위쪽(앞쪽) 폴더가 목록 위에 오도록
@@ -112,19 +113,22 @@ function LayerList() {
                           checked={l.enabled}
                           onChange={(e) => updateLayer(l.id, { enabled: e.target.checked })}
                         />
-                        <span className="min-w-0 flex-1 truncate">
-                          {l.name}
-                          {l.expression === 'normal' && <span className="ml-1 text-xs text-gray-400">(평소)</span>}
-                          {l.expression === 'hit' && <span className="ml-1 text-xs text-pink-400">(밀림)</span>}
-                        </span>
+                        {/* 줄을 누르면 이 레이어만 따로 조절하는 팝업이 열림 */}
                         <button
                           type="button"
-                          aria-label="레이어 설정"
-                          aria-expanded={openId === l.id}
+                          aria-label={`${l.name} 설정 열기`}
                           onClick={() => setOpenId(openId === l.id ? null : l.id)}
-                          className={`px-1 ${openId === l.id ? 'text-pink-600' : 'text-gray-500'}`}
+                          className={`flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-pink-50 ${
+                            openId === l.id ? 'bg-pink-100 text-pink-700' : ''
+                          }`}
                         >
-                          ⋮
+                          <img src={l.src} alt="" draggable={false} className="h-7 w-7 shrink-0 rounded border border-pink-100 bg-white object-contain" />
+                          <span className="min-w-0 flex-1 truncate">
+                            {l.name}
+                            {l.expression === 'normal' && <span className="ml-1 text-xs text-gray-400">(평소)</span>}
+                            {l.expression === 'hit' && <span className="ml-1 text-xs text-pink-400">(밀림)</span>}
+                          </span>
+                          <span className="text-gray-400">⚙</span>
                         </button>
                         <button
                           type="button"
@@ -153,7 +157,6 @@ function LayerList() {
                           ✕
                         </button>
                       </div>
-                      {openId === l.id && <LayerSettings layer={l} frame={frame} onClose={() => setOpenId(null)} />}
                     </li>
                   ))}
                 </ul>
@@ -162,6 +165,22 @@ function LayerList() {
           )
         })}
       </ul>
+      {openLayer && (
+        // 배경을 어둡게 하지 않는 떠 있는 팝업 — 설정하면서 흔들림을 볼 수 있음
+        <div
+          role="dialog"
+          aria-label={`${openLayer.name} 설정`}
+          className="fixed inset-x-2 bottom-2 z-50 max-h-[55vh] overflow-y-auto rounded-lg border border-pink-300 bg-white shadow-xl md:inset-x-auto md:bottom-auto md:left-4 md:top-4 md:max-h-[calc(100vh-2rem)] md:w-80"
+        >
+          <div className="sticky top-0 flex items-center justify-between border-b border-pink-100 bg-white px-3 py-2">
+            <span className="min-w-0 truncate font-bold text-pink-600">{openLayer.name}</span>
+            <button type="button" aria-label="팝업 닫기" onClick={() => setOpenId(null)} className="px-1 text-gray-500 hover:text-pink-600">
+              ✕
+            </button>
+          </div>
+          <LayerSettings layer={openLayer} frame={frame} onClose={() => setOpenId(null)} />
+        </div>
+      )}
       <input
         ref={inputRef}
         type="file"
@@ -181,7 +200,9 @@ function LayerList() {
       >
         + 레이어 추가 (PNG 여러 장 선택 → 폴더 하나)
       </button>
-      <p className="text-xs text-gray-400">한 번에 올린 이미지는 한 폴더로 묶여 같은 여백으로 함께 잘려요.</p>
+      <p className="text-xs text-gray-400">
+        한 번에 올린 이미지는 한 폴더로 묶여 같은 여백으로 함께 잘려요. 레이어 줄을 누르면 그 레이어만 따로 조절하는 팝업이 열려요.
+      </p>
       <label className="mt-2 flex items-center gap-2 text-sm">
         <input
           type="checkbox"

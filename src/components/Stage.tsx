@@ -1,6 +1,7 @@
 import Ribbon from './Ribbon'
 import CharacterLayer from './CharacterLayer'
 import PopEffect from './PopEffect'
+import Fire from './Fire'
 import { useSwingLoop } from '../hooks/useSwingLoop'
 import { useSwingStore } from '../store/useSwingStore'
 import { characterColumn } from '../utils/layout'
@@ -16,6 +17,7 @@ function Stage() {
   const activeId = useSwingStore((s) => s.activeCharacterId)
   const setActive = useSwingStore((s) => s.setActiveCharacter)
   const popEffect = useSwingStore((s) => s.popEffect)
+  const fireOn = useSwingStore((s) => s.fireOn)
   const trim = useSwingStore((s) => s.trim)
   const spacing = useSwingStore((s) => s.spacing)
   const zoom = useSwingStore((s) => s.zoom)
@@ -32,7 +34,7 @@ function Stage() {
   const columns = characters.map((_, i) => characterColumn(i, n, spacing))
 
   return (
-    <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: bgColor }}>
+    <div data-stage className="relative h-full w-full overflow-hidden" style={{ backgroundColor: bgColor }}>
       {/* 배경 그림: 줌 묶음 바깥에 있어서 줌의 영향을 받지 않음. 아래 묶음이 줌(위쪽 중앙 기준)을 받음 */}
       {bgUrl && (
         <img
@@ -93,7 +95,7 @@ function Stage() {
                     끈 끝이 그림의 attachY 높이에 닿도록 위로 올려 둠(0=정수리가 끈 끝). 끈 길이를 바꿔도 크기는 그대로 (크기는 줌으로 조절) */}
                 <div
                   className="absolute inset-x-0 flex h-[70%] justify-center"
-                  style={{ top: `calc(${ribbonLength}px - ${c.attachY * 70}%)` }}
+                  style={{ top: `calc(${ribbonLength}px - ${c.attachY * 70}%)`, filter: 'var(--cook-filter, none)' }}
                 >
                   <div className="relative h-full" style={{ aspectRatio: frame.aspect }}>
                     {charLayers.map((layer) => (
@@ -103,6 +105,7 @@ function Stage() {
                 </div>
               </div>
               {/* key가 바뀔 때마다(=밀릴 때마다) 새로 마운트되어 애니메이션이 다시 시작됨 */}
+              {fireOn && <Fire attachY={c.attachY} />}
               {popEffect && c.reactedAt > 0 && <PopEffect key={c.reactedAt} startAt={c.reactedAt} attachY={c.attachY} />}
               {n > 1 && (
                 <span
