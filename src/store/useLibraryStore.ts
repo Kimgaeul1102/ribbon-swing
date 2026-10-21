@@ -40,6 +40,8 @@ type LibraryState = {
   uploadAsLayers: (files: File[]) => Promise<void>
   /** 리본/배경 그림 등 레이어가 아닌 이미지를 보관함에 저장하고 돌려줌 */
   uploadImages: (files: File[], kind: AssetKind) => Promise<LibraryAsset[]>
+  /** 프로그램이 만든 이미지(밧줄 등)를 보관함에 저장하고 새 폴더로 추가. copyFrom이 있으면 그 레이어의 움직임 설정을 따라감 */
+  addGeneratedLayer: (blob: Blob, name: string, copyFrom?: Layer) => Promise<void>
   addLayerFromAsset: (assetId: string) => void
   removeAsset: (id: string) => void
   saveSet: (name: string) => void
@@ -234,6 +236,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       // 한 번에 올린 이미지는 한 폴더로 묶어 같은 여백으로 자른다
       const name = assets.length === 1 ? assets[0].name : `${assets[0].name} 외 ${assets.length - 1}장`
       const { group, layers } = buildFolder(name, assets)
+      const { addGroup, kickCharacter } = useSwingStore.getState()
+      addGroup(group, layers)
+      kickCharacter(group.characterId)
+    },
+
+    addGeneratedLayer: async (blob, name, copyFrom) => {
+      const [asset] = await importAssets([new File([blob], `${name}.png`, { type: 'image/png' })], 'layer')
+      if (!asset) return
+      const { group, layers } = buildFolder(name, [asset])
+      if (copyFrom) {
+        // 몸과 같은 움직임(지연/속도/크기/강성/회전 기준점)을 줘서 밧줄이 몸에 붙어 움직이게 함
+        const { delay, speedMul, amplitudeMul, stiffness, waveMul, swayMul, pivot } = copyFrom
+        layers[0] = { ...layers[0], delay, speedMul, amplitudeMul, stiffness, waveMul, swayMul, pivot: { ...pivot } }
+      }
       const { addGroup, kickCharacter } = useSwingStore.getState()
       addGroup(group, layers)
       kickCharacter(group.characterId)

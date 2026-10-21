@@ -79,6 +79,11 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - 움직임 탭 맨 위(`MotionSlots.tsx`): 지금 슬라이더 값을 이름 붙여 저장 / 불러오기 / 덮어쓰기 / 삭제. 값 목록은 `utils/motionSlots.ts MOTION_KEYS`(세기·속도·감쇠·말랑함·아래로 갈수록·계속 흔들기 세기·끈 흔들림·밀기 간격·표정 유지·뿅뿅). 레이어별 설정·그림·배경·줌은 안 들어감(그건 세트/컨셉)
 - 저장 위치는 localStorage `ribbon-swing:motions`(값이 작은 JSON). 키를 늘리면 옛 슬롯은 값이 빠져 걸러지므로(`parseSlots`), 키를 바꿀 때는 호환 처리를 같이 할 것. 불러오기는 `useSwingStore.setState(values)`
 
+### 3.2.9 밧줄 감기
+- 인원·레이어 탭의 `🪢 밧줄 감기`(`RopePanel.tsx`, `utils/rope.ts`): 고른 레이어(몸/옷)의 **알파 윤곽을 줄 단위로 읽어**(`silhouetteEdges`→`smoothEdges`) 바퀴마다 그 높이의 몸 폭에 맞춰 밧줄을 그린 **몸과 같은 캔버스 크기의 PNG**를 만들고, 새 폴더(레이어)로 맨 위에 추가한다(`useLibraryStore.addGeneratedLayer`, 몸 레이어의 delay/speed/amplitude/stiffness/wave/sway/pivot을 복사)
+- 일반 레이어라서 몸과 함께 움직이고 순서/폴더/세트/컨셉/MP4·GIF 저장이 그대로 적용됨 — 렌더러를 따로 고칠 필요 없음. 정면 자세 가정: 각 바퀴는 몸 앞쪽 절반만 그림(뒤쪽은 몸에 가려짐), 가운데 처짐 + 양 끝 어둡게. 스타일: 기본 **단색 만화체**(굵은 윤곽선 + 단색 채움 + 짧은 사선 꼬임, 밧줄색/윤곽선색 선택)와 **입체**(그림자/하이라이트) 중 선택(`flat`). 옵션(`RopeOptions`): 감기 시작/끝(몸 내용 영역 높이 비율), 바퀴 수, 굵기(몸 폭 비율), 처짐, 매듭
+- 이미지 크기는 몸 원본과 정확히 같아야 원본 좌표로 겹침(같은 캔버스 크기의 레이어만 함께 윤곽으로 쓸 수 있음). 밧줄은 한 번 그려진 이미지라 수정하려면 폴더를 지우고 다시 만든다
+
 ### 3.2.7 다크 모드
 - 위쪽 고정 영역의 `🌙 다크 모드` 토글(`App.tsx`, localStorage `ribbon-swing:theme`, 기본 밝게). 켜면 `<html class="dark">` → `index.css`가 Tailwind 색 변수(`--color-pink-*`, `gray-*`, `orange-*`, `red-*`)를 검정+푸른 톤으로 덮어씀. 그래서 컴포넌트는 `dark:` 클래스 없이 기존 `pink-*` 클래스를 그대로 쓰면 됨(새 색 클래스를 쓰면 이 목록에 변수를 추가). `bg-white`만 따로 덮어씀(`text-white`는 그대로 흰색이어야 해서 `--color-white`는 안 건드림)
 - 무대(배경색/그림)는 컨셉의 일부라 다크 모드와 무관, 저장 결과에도 영향 없음

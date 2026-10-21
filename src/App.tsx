@@ -4,6 +4,7 @@ import ActionBar from './components/ActionBar'
 import CharacterBar from './components/CharacterBar'
 import LayerList from './components/LayerList'
 import LibraryPanel from './components/LibraryPanel'
+import RopePanel from './components/RopePanel'
 import MotionPanel from './components/MotionPanel'
 import RibbonPanel from './components/RibbonPanel'
 import ScreenPanel from './components/ScreenPanel'
@@ -117,6 +118,7 @@ function App() {
             <>
               <CharacterBar />
               <LayerList />
+              <RopePanel />
               <LibraryPanel />
             </>
           )}
