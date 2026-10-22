@@ -17,19 +17,23 @@ export type RopeOptions = {
   color: string // 단색 밧줄 색
   outline: string // 윤곽선 색
   twist: boolean // 꼬임 선 (단색일 때 짧은 사선)
+  tangle: number // 엉킴 (0~1): 클수록 가닥마다 기울기/높이/굵기가 달라지고 서로 교차하며 겹침. 0이면 가지런히 일자로
+  seed: number // 엉킴 모양을 정하는 값 (바꾸면 다른 모양)
 }
 
 export const DEFAULT_ROPE: RopeOptions = {
   top: 0.35,
   bottom: 0.6,
-  turns: 4,
-  thickness: 0.06,
+  turns: 6,
+  thickness: 0.08,
   curve: 0.5,
   knot: true,
   flat: true,
   color: '#f6e7c8',
   outline: '#1b1212',
   twist: true,
+  tangle: 0.6,
+  seed: 7,
 }
 
 const ALPHA_ON = 128 // 이 값을 넘는 픽셀을 몸으로 봄
@@ -89,8 +93,28 @@ export function edgesAt(edges: Edges, y: number, maxGap: number): { left: number
   return null
 }
 
-export type RopeTurn = { yc: number; left: number; right: number }
-export type RopePlan = { t: number; pitch: number; turns: RopeTurn[] }
+/** 같은 seed면 항상 같은 값이 나오는 난수 (엉킴 모양이 그릴 때마다 바뀌지 않게) */
+export function seededRandom(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+export type RopeTurn = {
+  yc: number // 가운데 높이
+  left: number // 그 높이의 몸 왼쪽 끝
+  right: number
+  w: number // 이 가닥의 굵기
+  tilt: number // 한쪽 끝이 반대쪽보다 내려가는 정도 (양수: 오른쪽이 아래, 음수: 왼쪽이 아래)
+  sagMul: number // 처짐 배율
+}
+/** t: 기준 굵기(매듭 등에 씀), order: 그리는 순서(나중에 그린 가닥이 위로 덮임) */
+export type RopePlan = { t: number; pitch: number; turns: RopeTurn[]; order: number[] }
 
 /** 바퀴마다 높이와 몸 폭을 정한다. 몸을 못 찾으면 null */
 export function planRope(edges: Edges, bbox: Box, o: RopeOptions): RopePlan | null {
@@ -98,24 +122,42 @@ export function planRope(edges: Edges, bbox: Box, o: RopeOptions): RopePlan | nu
   const y1 = bbox.y + o.bottom * bbox.h
   const n = Math.max(1, Math.round(o.turns))
   const pitch = (y1 - y0) / n
-  const t = Math.max(2, Math.min(o.thickness * bbox.w, pitch * 1.15)) // 바퀴 간격보다 두꺼우면 겹치므로 제한
+  const m = Math.min(1, Math.max(0, o.tangle))
+  // 엉킴이 없으면 바퀴 간격보다 두껍지 않게(일자로 나란히), 엉킴이 크면 서로 덮이도록 더 두껍게 허용
+  const t = Math.max(2, Math.min(o.thickness * bbox.w, pitch * (1.15 + 2 * m)))
+  const rand = seededRandom(o.seed)
   const turns: RopeTurn[] = []
+  const keys: number[] = []
   for (let k = 0; k < n; k++) {
-    const yc = y0 + (k + 0.5) * pitch
+    const r = [rand(), rand(), rand(), rand(), rand(), rand()] // 몸을 못 찾은 바퀴가 있어도 다른 바퀴 모양이 안 바뀌게 항상 다 뽑음
+    const yc = y0 + (k + 0.5) * pitch + (r[0] - 0.5) * pitch * m * 0.8
     const e = edgesAt(edges, yc, Math.round(bbox.h * 0.05))
-    if (e) turns.push({ yc, ...e })
+    if (!e) continue
+    const sign = m > 0 && r[1] < 0.5 ? -1 : 1 // 엉킴이 있으면 가닥마다 기울어지는 방향이 제각각
+    turns.push({
+      yc,
+      ...e,
+      w: t * (1 + m * (r[4] - 0.5) * 0.3),
+      tilt: sign * (pitch * 0.3 + m * (e.right - e.left) * 0.09 * r[2]),
+      sagMul: 1 + m * (r[3] - 0.5) * 0.8,
+    })
+    keys.push(r[5])
   }
-  return turns.length ? { t, pitch, turns } : null
+  if (!turns.length) return null
+  // 엉킴이 있으면 어떤 가닥이 위로 덮일지도 제각각 (매듭은 항상 맨 위)
+  const order = turns.map((_, i) => i)
+  if (m > 0) order.sort((a, b) => keys[a] - keys[b])
+  return { t, pitch, turns, order }
 }
 
 type Pt = { x: number; y: number }
 
 /** 한 바퀴의 앞쪽 곡선: 가운데가 처지고, 한 바퀴 돌며 조금씩 내려가는 기울기 */
-export function turnPoints(turn: RopeTurn, t: number, pitch: number, curve: number, steps = 48): Pt[] {
+export function turnPoints(turn: RopeTurn, curve: number, steps = 48): Pt[] {
   const mid = (turn.left + turn.right) / 2
-  const half = (turn.right - turn.left) / 2 + t * 0.35 // 밧줄 굵기만큼 몸 바깥으로 살짝 나감
-  const sag = curve * (turn.right - turn.left) * 0.1
-  const tilt = pitch * 0.3
+  const half = (turn.right - turn.left) / 2 + turn.w * 0.35 // 밧줄 굵기만큼 몸 바깥으로 살짝 나감
+  const sag = curve * turn.sagMul * (turn.right - turn.left) * 0.1
+  const tilt = turn.tilt
   return Array.from({ length: steps + 1 }, (_, i) => {
     const u = (i / steps) * 2 - 1
     return { x: mid + u * half, y: turn.yc + sag * (1 - u * u) + tilt * u }
@@ -193,9 +235,43 @@ function cord(ctx: CanvasRenderingContext2D, pts: Pt[], w: number, shadow: boole
   ctx.restore()
 }
 
-/** 단색 밧줄 한 가닥: 굵은 윤곽선 + 단색 채움 + (선택) 짧은 사선 꼬임 */
-function cordFlat(ctx: CanvasRenderingContext2D, pts: Pt[], w: number, o: RopeOptions): void {
-  const ol = Math.max(2, w * 0.3)
+export type CordStyle = Pick<RopeOptions, 'color' | 'outline' | 'twist'>
+
+/** 점들을 따라간 거리 s의 위치에서 옆(v)으로 벗어난 좌표. 거리/옆 값은 범위를 넘으면 끝에 붙임 */
+function pathFrame(pts: Pt[]): { total: number; at: (s: number, v: number) => Pt } {
+  const cum = [0]
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y))
+  const total = cum[cum.length - 1]
+  const at = (s: number, v: number): Pt => {
+    const d = Math.min(total, Math.max(0, s))
+    let i = 1
+    while (i < pts.length - 1 && cum[i] < d) i++
+    const a = pts[i - 1]
+    const b = pts[i]
+    const len = cum[i] - cum[i - 1] || 1
+    const f = (d - cum[i - 1]) / len
+    const tx = (b.x - a.x) / len
+    const ty = (b.y - a.y) / len
+    return { x: a.x + (b.x - a.x) * f - ty * v, y: a.y + (b.y - a.y) * f + tx * v }
+  }
+  return { total, at }
+}
+
+/** 윤곽선 굵기: 밧줄 굵기(w)에 비례, 얇을 때는 최소 2px */
+const outlineOf = (w: number) => Math.max(2, w * 0.3)
+
+/** 윤곽선까지 포함해 전체 굵기가 total이 되도록 하는 밧줄 안쪽(채움) 굵기 */
+export function ropeInnerWidth(total: number): number {
+  const k = total / 1.6
+  return k >= 20 / 3 ? k : Math.max(1, total - 4)
+}
+
+/**
+ * 단색 밧줄 한 가닥: 굵은 윤곽선 + 단색 채움 + (선택) 꼬임.
+ * 꼬임은 사진 속 밧줄처럼 한쪽 가장자리에서 반대쪽으로 S자로 휘어 넘어가는 가닥 선을 일정 간격으로 반복해서 그림.
+ */
+export function drawRopeCord(ctx: CanvasRenderingContext2D, pts: Pt[], w: number, o: CordStyle): void {
+  const ol = outlineOf(w)
   ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -206,21 +282,40 @@ function cordFlat(ctx: CanvasRenderingContext2D, pts: Pt[], w: number, o: RopeOp
   ctx.lineWidth = w
   strokePath(ctx, pts, 0)
   if (o.twist) {
-    ctx.lineCap = 'butt'
+    const { total, at } = pathFrame(pts)
+    const h = w / 2
+    const P = w * 0.8 // 가닥 하나가 길이 방향으로 차지하는 간격
     ctx.strokeStyle = o.outline
-    ctx.lineWidth = Math.max(1.5, ol * 0.6)
-    for (const { p, tx, ty } of sampleAlong(pts, w * 1.1)) {
-      const nx = -ty
-      const ny = tx
-      const sl = w * 0.22
+    ctx.lineWidth = Math.max(1.2, ol * 0.55)
+    ctx.lineCap = 'round'
+    for (let s = 0; s < total - P * 0.2; s += P) {
+      const a = at(s, -h)
+      const c1 = at(s + P * 0.6, -h)
+      const c2 = at(s + P * 0.4, h)
+      const b = at(s + P, h)
       ctx.beginPath()
-      ctx.moveTo(p.x - nx * w * 0.5 - tx * sl, p.y - ny * w * 0.5 - ty * sl)
-      ctx.lineTo(p.x + nx * w * 0.5 + tx * sl, p.y + ny * w * 0.5 + ty * sl)
+      ctx.moveTo(a.x, a.y)
+      ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, b.x, b.y)
       ctx.stroke()
     }
   }
   ctx.restore()
 }
+
+/** 직선 밧줄 (매달린 끈, 가로대): 전체 굵기가 thickness가 되도록, 양 끝이 a, b에 딱 맞게 */
+export function drawRopeLine(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, thickness: number, o: CordStyle): void {
+  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1
+  const r = thickness / 2 // 둥근 끝이 a, b 밖으로 안 나가게 안쪽에서 시작
+  const ux = (b.x - a.x) / len
+  const uy = (b.y - a.y) / len
+  if (len <= thickness) return
+  drawRopeCord(ctx, [{ x: a.x + ux * r, y: a.y + uy * r }, { x: b.x - ux * r, y: b.y - uy * r }], ropeInnerWidth(thickness), o)
+}
+
+/** 기본 매달린 끈/가로대의 모양 */
+export const ROPE_LOOK: CordStyle = { color: DEFAULT_ROPE.color, outline: DEFAULT_ROPE.outline, twist: true }
+
+const cordFlat = drawRopeCord
 
 /** 단색 매듭: 윤곽선 있는 동그란 매듭 + 늘어진 끝 두 가닥 */
 function drawKnotFlat(ctx: CanvasRenderingContext2D, at: Pt, t: number, o: RopeOptions): void {
@@ -229,8 +324,8 @@ function drawKnotFlat(ctx: CanvasRenderingContext2D, at: Pt, t: number, o: RopeO
       const s = i / 20
       return { x: at.x + dx * s + Math.sin(s * Math.PI) * bend, y: at.y + len * s }
     })
-  cordFlat(ctx, tail(-t * 1.4, t * 4.6, -t * 0.6), t * 0.8, { ...o, twist: false })
-  cordFlat(ctx, tail(t * 1.1, t * 5.4, t * 0.7), t * 0.8, { ...o, twist: false })
+  cordFlat(ctx, tail(-t * 1.4, t * 4.6, -t * 0.6), t * 0.8, o)
+  cordFlat(ctx, tail(t * 1.1, t * 5.4, t * 0.7), t * 0.8, o)
   ctx.save()
   ctx.fillStyle = o.color
   ctx.strokeStyle = o.outline
@@ -335,14 +430,15 @@ export function renderRope(
   out.width = W
   out.height = H
   const ctx = out.getContext('2d')!
-  let last: Pt[] = []
-  for (const turn of plan.turns) {
-    last = turnPoints(turn, plan.t, plan.pitch, o.curve)
-    if (o.flat) cordFlat(ctx, last, plan.t, o)
-    else drawTurn(ctx, last, plan.t)
+  for (const i of plan.order) {
+    const turn = plan.turns[i]
+    const pts = turnPoints(turn, o.curve)
+    if (o.flat) cordFlat(ctx, pts, turn.w, o)
+    else drawTurn(ctx, pts, turn.w)
   }
-  if (o.knot && last.length) {
-    const at = last[Math.round(last.length * 0.64)]
+  if (o.knot) {
+    const bottom = turnPoints(plan.turns[plan.turns.length - 1], o.curve) // 맨 아래 바퀴에 매듭
+    const at = bottom[Math.round(bottom.length * 0.64)]
     if (o.flat) drawKnotFlat(ctx, at, plan.t, o)
     else drawKnot(ctx, at, plan.t)
   }

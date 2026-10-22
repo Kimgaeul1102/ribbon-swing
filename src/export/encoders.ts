@@ -76,7 +76,7 @@ export function buildPalette(samples: Uint8ClampedArray[]): number[][] {
       merged[o++] = s[p + 3]
     }
   }
-  return quantize(merged.subarray(0, o), 256, { format: 'rgb444' })
+  return quantize(merged.subarray(0, o), 256, { format: 'rgb565' })
 }
 
 /** GIF — 공통 팔레트로 인코딩 (끝없이 반복) */
@@ -86,7 +86,7 @@ export function createGifSink(w: number, h: number, fps: number, palette: number
   return {
     add: async (canvas) => {
       const data = canvas.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w, h).data
-      gif.writeFrame(applyPalette(data, palette, 'rgb444'), w, h, { palette, delay, repeat: 0 })
+      gif.writeFrame(applyPalette(data, palette, 'rgb565'), w, h, { palette, delay, repeat: 0 })
       await tick()
     },
     finish: async () => {

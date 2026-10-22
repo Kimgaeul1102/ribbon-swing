@@ -2,6 +2,7 @@ import Ribbon from './Ribbon'
 import CharacterLayer from './CharacterLayer'
 import PopEffect from './PopEffect'
 import Fire from './Fire'
+import RopeCord from './RopeCord'
 import { useSwingLoop } from '../hooks/useSwingLoop'
 import { useSwingStore } from '../store/useSwingStore'
 import { characterColumn } from '../utils/layout'
@@ -86,8 +87,9 @@ function Stage() {
                     style={{ height: ribbonLength, width: ribbonWidth, objectFit: 'fill' }}
                   />
                 ) : (
-                  <div
-                    className="absolute left-1/2 top-0 -translate-x-1/2 rounded-full bg-pink-500"
+                  // 기본 끈: 꼬인 밧줄
+                  <RopeCord
+                    className="absolute left-1/2 top-0 -translate-x-1/2"
                     style={{ height: ribbonLength, width: ribbonWidth }}
                   />
                 )}

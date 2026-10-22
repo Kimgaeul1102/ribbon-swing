@@ -112,7 +112,7 @@ type SwingState = {
   moveLayer: (id: string, dir: 'up' | 'down') => void
 }
 
-const DEFAULT_RIBBON_WIDTH = 6
+const DEFAULT_RIBBON_WIDTH = 18 // 기본 끈은 밧줄 — 꼬임 무늬가 보이려면 어느 정도 굵어야 함
 const IMAGE_RIBBON_WIDTH = 28
 const DEFAULT_BG_COLOR = '#fdf2f8'
 

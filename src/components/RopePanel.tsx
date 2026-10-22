@@ -19,7 +19,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return images.get(src)!
 }
 
-const PREVIEW_MAX = 420 // 미리보기를 그릴 때 긴 쪽 최대 px
+const PREVIEW_MAX = 520 // 미리보기를 그릴 때 긴 쪽 최대 px
 const BODY_NAME = /body|몸|본체/i
 
 /**
@@ -125,8 +125,8 @@ function RopePanel() {
   }
 
   return (
-    <details className="mb-6 rounded border border-pink-200 p-3">
-      <summary className="cursor-pointer font-bold text-pink-600">🪢 밧줄 감기</summary>
+    <section>
+      <h2 className="mb-1 font-bold text-pink-600">🪢 밧줄 감기</h2>
       {layers.length === 0 ? (
         <p className="mt-2 text-sm text-gray-400">레이어를 먼저 올려 주세요.</p>
       ) : (
@@ -157,7 +157,7 @@ function RopePanel() {
           </fieldset>
 
           <div className="mb-3 flex justify-center rounded bg-pink-50 p-1">
-            <canvas ref={previewRef} className="max-h-64 max-w-full" />
+            <canvas ref={previewRef} className="max-h-80 max-w-full" />
           </div>
 
           <div className="mb-3 grid grid-cols-2 gap-2" role="radiogroup" aria-label="밧줄 스타일">
@@ -212,7 +212,26 @@ function RopePanel() {
             step={0.01}
             onChange={(v) => set('bottom', Math.max(v, opts.top + 0.03))}
           />
-          <SliderRow label="바퀴 수" value={opts.turns} min={1} max={10} step={1} onChange={(v) => set('turns', v)} />
+          <SliderRow label="바퀴 수" value={opts.turns} min={1} max={14} step={1} onChange={(v) => set('turns', v)} />
+          <SliderRow
+            label="엉킴"
+            value={opts.tangle}
+            display={`${Math.round(opts.tangle * 100)}%`}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={(v) => set('tangle', v)}
+            hint="0%는 가지런히 일자로, 높이면 가닥이 비스듬히 교차하며 서로 겹쳐요"
+          />
+          {opts.tangle > 0 && (
+            <button
+              type="button"
+              onClick={() => set('seed', Math.floor(Math.random() * 1e9))}
+              className="mb-3 w-full rounded border border-pink-400 py-1 text-sm text-pink-500 hover:bg-pink-50"
+            >
+              🎲 다시 섞기 (다른 엉킴 모양)
+            </button>
+          )}
           <SliderRow
             label="굵기"
             value={opts.thickness}
@@ -252,7 +271,7 @@ function RopePanel() {
           </p>
         </>
       )}
-    </details>
+    </section>
   )
 }
 

@@ -46,7 +46,7 @@ function RibbonPanel() {
         selectedId={s.ribbonAssetId}
         onSelect={s.setRibbonAsset}
         uploadLabel="+ 리본 그림 올리기"
-        noneLabel="기본 분홍 끈으로"
+        noneLabel="기본 밧줄로"
       />
     </section>
   )

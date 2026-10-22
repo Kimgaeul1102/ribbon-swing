@@ -42,7 +42,7 @@ describe('planRope', () => {
   const edges = silhouetteEdges(body(100, 200, () => [30, 70]), 100, 200)
   const bbox = { x: 30, y: 0, w: 40, h: 200 }
   it('바퀴 수만큼, 위에서 아래로 일정 간격으로 계획한다', () => {
-    const plan = planRope(edges, bbox, { ...DEFAULT_ROPE, top: 0.2, bottom: 0.6, turns: 4 })!
+    const plan = planRope(edges, bbox, { ...DEFAULT_ROPE, top: 0.2, bottom: 0.6, turns: 4, tangle: 0 })!
     expect(plan.turns).toHaveLength(4)
     const ys = plan.turns.map((t) => t.yc)
     expect([...ys].sort((a, b) => a - b)).toEqual(ys)
@@ -50,8 +50,24 @@ describe('planRope', () => {
     expect(plan.turns[0]).toMatchObject({ left: 30, right: 70 })
   })
   it('굵기는 바퀴 간격보다 두꺼워지지 않는다', () => {
-    const plan = planRope(edges, bbox, { ...DEFAULT_ROPE, turns: 10, thickness: 0.1 })!
+    const plan = planRope(edges, bbox, { ...DEFAULT_ROPE, turns: 10, thickness: 0.1, tangle: 0 })!
     expect(plan.t).toBeLessThanOrEqual(plan.pitch * 1.15 + 1e-9)
+  })
+  it('엉킴이 있으면 서로 덮이도록 바퀴 간격보다 두꺼워질 수 있다', () => {
+    const plan = planRope(edges, bbox, { ...DEFAULT_ROPE, turns: 10, thickness: 0.4, tangle: 1 })!
+    expect(plan.t).toBeGreaterThan(plan.pitch * 1.15)
+  })
+  it('엉킴이 있으면 가닥마다 기울기 방향/크기가 다르고, 같은 seed면 항상 같다', () => {
+    const o = { ...DEFAULT_ROPE, turns: 8, tangle: 0.8 }
+    const a = planRope(edges, bbox, o)!
+    expect(planRope(edges, bbox, o)).toEqual(a)
+    expect(new Set(a.turns.map((t) => Math.sign(t.tilt))).size).toBe(2)
+    expect(planRope(edges, bbox, { ...o, seed: 99 })).not.toEqual(a)
+  })
+  it('엉킴이 0이면 모두 같은 방향으로 가지런하다', () => {
+    const a = planRope(edges, bbox, { ...DEFAULT_ROPE, tangle: 0 })!
+    expect(a.turns.every((t) => t.tilt > 0 && t.sagMul === 1)).toBe(true)
+    expect(a.order).toEqual(a.turns.map((_, i) => i))
   })
   it('몸이 없으면 null', () => {
     const empty = silhouetteEdges(body(10, 10, () => null), 10, 10)
@@ -60,9 +76,9 @@ describe('planRope', () => {
 })
 
 describe('turnPoints', () => {
-  const turn = { yc: 100, left: 30, right: 70 }
+  const turn = { yc: 100, left: 30, right: 70, w: 6, tilt: 20, sagMul: 1 }
   it('몸보다 굵기만큼 바깥까지 나가고, 가운데가 양 끝보다 처진다', () => {
-    const pts = turnPoints(turn, 6, 20, 1)
+    const pts = turnPoints(turn, 1)
     expect(pts[0].x).toBeLessThan(30)
     expect(pts[pts.length - 1].x).toBeGreaterThan(70)
     const mid = pts[Math.floor(pts.length / 2)]
@@ -70,7 +86,7 @@ describe('turnPoints', () => {
     expect(mid.y).toBeGreaterThan(edgeAvg)
   })
   it('처짐이 0이면 직선에 가깝다', () => {
-    const pts = turnPoints(turn, 6, 0, 0)
+    const pts = turnPoints({ ...turn, tilt: 0 }, 0)
     expect(new Set(pts.map((p) => p.y)).size).toBe(1)
   })
 })

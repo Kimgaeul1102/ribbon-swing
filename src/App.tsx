@@ -16,6 +16,7 @@ const TABS = [
   { id: 'layers', label: '인원·레이어' },
   { id: 'motion', label: '움직임' },
   { id: 'ribbon', label: '리본' },
+  { id: 'rope', label: '밧줄' },
   { id: 'screen', label: '배경·화면' },
   { id: 'scene', label: '컨셉' },
   { id: 'export', label: '저장' },
@@ -118,12 +119,12 @@ function App() {
             <>
               <CharacterBar />
               <LayerList />
-              <RopePanel />
               <LibraryPanel />
             </>
           )}
           {tab === 'motion' && <MotionPanel />}
           {tab === 'ribbon' && <RibbonPanel />}
+          {tab === 'rope' && <RopePanel />}
           {tab === 'screen' && <ScreenPanel />}
           {tab === 'scene' && <ScenePanel />}
           {tab === 'export' && <ExportPanel />}

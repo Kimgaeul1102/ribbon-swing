@@ -3,6 +3,7 @@ import type { BgFit } from '../store/useSwingStore'
 import type { SimFrame } from '../sim/swingSim'
 import type { Frame } from '../utils/frame'
 import { characterColumn } from '../utils/layout'
+import { ROPE_LOOK, drawRopeLine } from '../utils/rope'
 import {
   FIRE_BASE_OFFSET,
   FIRE_HEIGHT_RATIO,
@@ -63,15 +64,8 @@ function drawRibbon(ctx: CanvasRenderingContext2D, snap: SceneSnapshot, colW: nu
     ctx.drawImage(snap.ribbonImage, x, 0, snap.ribbonWidth, snap.ribbonLength) // 세로로 늘려 채움
     return
   }
-  ctx.fillStyle = '#ec4899' // 기본 분홍 끈 (둥근 모서리)
-  const r = Math.min(snap.ribbonWidth, snap.ribbonLength) / 2
-  ctx.beginPath()
-  ctx.moveTo(x + r, 0)
-  ctx.arcTo(x + snap.ribbonWidth, 0, x + snap.ribbonWidth, snap.ribbonLength, r)
-  ctx.arcTo(x + snap.ribbonWidth, snap.ribbonLength, x, snap.ribbonLength, r)
-  ctx.arcTo(x, snap.ribbonLength, x, 0, r)
-  ctx.arcTo(x, 0, x + snap.ribbonWidth, 0, r)
-  ctx.fill()
+  // 기본 끈: 꼬인 밧줄 (Stage의 RopeCord와 같은 그리기 함수)
+  drawRopeLine(ctx, { x: colW / 2, y: 0 }, { x: colW / 2, y: snap.ribbonLength }, snap.ribbonWidth, ROPE_LOOK)
 }
 
 function drawParticle(ctx: CanvasRenderingContext2D, p: PopParticle, elapsedMs: number): void {
@@ -115,13 +109,8 @@ export function renderFrame(
   if (n > 1) {
     const first = (characterColumn(0, n, snap.spacing).center / 100) * W
     const last = (characterColumn(n - 1, n, snap.spacing).center / 100) * W
-    ctx.strokeStyle = '#f9a8d4'
-    ctx.lineWidth = 6
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.moveTo(first, 3)
-    ctx.lineTo(last, 3)
-    ctx.stroke()
+    const tw = snap.ribbonWidth // Ribbon.tsx와 같은 규칙: 양 끝을 굵기의 절반씩 바깥으로
+    drawRopeLine(ctx, { x: first - tw / 2, y: tw / 2 }, { x: last + tw / 2, y: tw / 2 }, tw, ROPE_LOOK)
   }
 
   snap.characters.forEach((c, i) => {

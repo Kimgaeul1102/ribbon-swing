@@ -56,8 +56,8 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - `zoom`(0.5~1.5): 무대 내용을 위쪽 중앙 기준으로 확대/축소. 배경은 Stage 바로 아래(줌 묶음 바깥)에 두면 줌의 영향을 받지 않음
 
 ### 3.2.4 탭 / 리본 그림 / 배경 / 컨셉
-- 오른쪽 패널(모바일은 하단 시트)은 **위쪽 고정 버튼 줄**(밀기 2종·계속 흔들기·멈추기) + **탭**: 인원·레이어 / 움직임 / 리본 / 배경·화면 / 컨셉. 마지막으로 본 탭은 localStorage에 기억
-- **리본 그림**: 보관함 이미지(`kind: 'ribbon'`)를 끈 길이만큼 세로로 늘려 채움(`object-fit: fill`). 굵기 `ribbonWidth`, 길이 `ribbonLength`. 없으면 기본 분홍 끈
+- 오른쪽 패널(모바일은 하단 시트)은 **위쪽 고정 버튼 줄**(밀기 2종·계속 흔들기·멈추기) + **탭**: 인원·레이어 / 움직임 / 리본 / 밧줄 / 배경·화면 / 컨셉 / 저장. 마지막으로 본 탭은 localStorage에 기억
+- **리본 그림**: 보관함 이미지(`kind: 'ribbon'`)를 끈 길이만큼 세로로 늘려 채움(`object-fit: fill`). 굵기 `ribbonWidth`(기본 18), 길이 `ribbonLength`. 없으면 **기본 끈은 꼬인 밧줄**(`components/RopeCord.tsx` canvas, 여러 인원이면 위쪽 가로대도 같은 밧줄). 그리기는 `utils/rope.ts drawRopeLine/drawRopeCord`를 화면과 저장(`renderScene.ts`)이 같이 씀 — 굵기·위치 규칙(가로대는 양 끝을 굵기 절반씩 바깥으로)을 바꾸면 둘 다 고칠 것
 - **배경**: 배경색 + 배경 그림(`kind: 'background'`, 맞춤 cover/contain/fill). 줌 묶음 바깥에 그려서 줌의 영향을 안 받음
 - 보관함 이미지는 용도(`kind`: layer/ribbon/background)별로 나뉨. 같은 파일이라도 용도가 다르면 따로 저장(해시+kind로 중복 판별). 이전 버전에서 저장한 이미지는 layer
 - **컨셉(장면 전체)**: `pickSceneParams`(슬라이더·리본·배경 설정) + 모든 인원/폴더/레이어를 IndexedDB `scenes`에 저장 (`saveScene`/`applyScene`). 불러오면 통째로 교체. DB 버전 2(scenes 저장소 추가, 기존 데이터 유지)
@@ -66,7 +66,7 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - **화면을 녹화하지 않는다.** 움직임 계산(`sim/swingSim.ts`, 순수 함수)을 일정한 가상 시간 간격으로 돌리고 `export/renderScene.ts`가 canvas에 직접 그린다 → 실시간 성능과 무관, 매번 같은 결과, 폰에서도 동일. 화면 루프(`hooks/useSwingLoop.ts`)도 같은 sim을 실제 시간으로 돌릴 뿐
 - **renderScene은 화면 레이아웃 규칙을 그대로 따라야 한다**: 열 나누기(`characterColumn`), 끈 길이/위치, 그림 박스 높이 70%, 줌(위쪽 중앙), 변형 순서 rotate→skewX→scale, 끈 회전(열 위쪽 가운데). Stage/CharacterLayer의 레이아웃을 바꾸면 renderScene도 같이 바꿀 것
 - 한 번 밀기만 저장(계속 흔들기 제외). 길이 = 마지막 인원이 밀린 뒤 모든 흔들림이 1° 아래로 가라앉아 0.25초 유지되는 시점 + 꼬리 0.3초, 최대 길이(기본 8초)에서 자름 (`export/plan.ts`). 밀기 전 0.15초 정지 구간
-- MP4: WebCodecs `VideoEncoder`(H.264) + `mp4-muxer`. 미지원 브라우저는 `MP4_UNSUPPORTED` 안내. GIF: `gifenc`, 샘플 프레임으로 만든 공통 256색 팔레트(깜빡임 방지)
+- MP4: WebCodecs `VideoEncoder`(H.264) + `mp4-muxer`. 미지원 브라우저는 `MP4_UNSUPPORTED` 안내. GIF: `gifenc`, 샘플 프레임으로 만든 공통 256색 팔레트(깜빡임 방지, `rgb565` 정밀도 — `rgb444`는 흰색과 연한 분홍 배경이 같은 색이 돼 몸이 사라졌음)
 - 화면 비율: 지금 화면(`[data-stage]` 크기) / 9:16 / 1:1 / 16:9 (나머지는 높이 720 화면px 기준). H.264 때문에 출력 크기는 짝수
 - 뿅뿅 효과 값은 `utils/popParticles.ts`를 화면(CSS)과 저장(canvas)이 같이 씀
 
@@ -80,8 +80,9 @@ angle(t) = A · e^(−d·t) · sin(2π·f·t)
 - 저장 위치는 localStorage `ribbon-swing:motions`(값이 작은 JSON). 키를 늘리면 옛 슬롯은 값이 빠져 걸러지므로(`parseSlots`), 키를 바꿀 때는 호환 처리를 같이 할 것. 불러오기는 `useSwingStore.setState(values)`
 
 ### 3.2.9 밧줄 감기
-- 인원·레이어 탭의 `🪢 밧줄 감기`(`RopePanel.tsx`, `utils/rope.ts`): 고른 레이어(몸/옷)의 **알파 윤곽을 줄 단위로 읽어**(`silhouetteEdges`→`smoothEdges`) 바퀴마다 그 높이의 몸 폭에 맞춰 밧줄을 그린 **몸과 같은 캔버스 크기의 PNG**를 만들고, 새 폴더(레이어)로 맨 위에 추가한다(`useLibraryStore.addGeneratedLayer`, 몸 레이어의 delay/speed/amplitude/stiffness/wave/sway/pivot을 복사)
-- 일반 레이어라서 몸과 함께 움직이고 순서/폴더/세트/컨셉/MP4·GIF 저장이 그대로 적용됨 — 렌더러를 따로 고칠 필요 없음. 정면 자세 가정: 각 바퀴는 몸 앞쪽 절반만 그림(뒤쪽은 몸에 가려짐), 가운데 처짐 + 양 끝 어둡게. 스타일: 기본 **단색 만화체**(굵은 윤곽선 + 단색 채움 + 짧은 사선 꼬임, 밧줄색/윤곽선색 선택)와 **입체**(그림자/하이라이트) 중 선택(`flat`). 옵션(`RopeOptions`): 감기 시작/끝(몸 내용 영역 높이 비율), 바퀴 수, 굵기(몸 폭 비율), 처짐, 매듭
+- 꼬임 무늬는 `drawRopeCord`가 그림: 윤곽선+단색 채움 위에, 한쪽 가장자리에서 반대쪽으로 S자로 휘어 넘어가는 가닥 선을 `0.8×굵기` 간격으로 반복(휘어진 경로도 따라감). 매듭 끝 가닥에도 적용
+- **밧줄 탭**(`RopePanel.tsx`, `utils/rope.ts`): 고른 레이어(몸/옷)의 **알파 윤곽을 줄 단위로 읽어**(`silhouetteEdges`→`smoothEdges`) 바퀴마다 그 높이의 몸 폭에 맞춰 밧줄을 그린 **몸과 같은 캔버스 크기의 PNG**를 만들고, 새 폴더(레이어)로 맨 위에 추가한다(`useLibraryStore.addGeneratedLayer`, 몸 레이어의 delay/speed/amplitude/stiffness/wave/sway/pivot을 복사)
+- 일반 레이어라서 몸과 함께 움직이고 순서/폴더/세트/컨셉/MP4·GIF 저장이 그대로 적용됨 — 렌더러를 따로 고칠 필요 없음. 정면 자세 가정: 각 바퀴는 몸 앞쪽 절반만 그림(뒤쪽은 몸에 가려짐), 가운데 처짐 + 양 끝 어둡게. 스타일: 기본 **단색 만화체**(굵은 윤곽선 + 단색 채움 + 짧은 사선 꼬임, 밧줄색/윤곽선색 선택)와 **입체**(그림자/하이라이트) 중 선택(`flat`). **엉킴**(`tangle` 0~1 + `seed`, 🎲 다시 섞기): 가닥마다 기울기 방향/크기·높이·굵기·처짐이 seed 난수로 달라지고 바퀴 간격보다 두껍게 허용돼 비스듬히 교차·겹침, 그리는 순서도 섞임(0이면 가지런히 일자). 옵션(`RopeOptions`): 감기 시작/끝(몸 내용 영역 높이 비율), 바퀴 수, 굵기(몸 폭 비율), 처짐, 매듭
 - 이미지 크기는 몸 원본과 정확히 같아야 원본 좌표로 겹침(같은 캔버스 크기의 레이어만 함께 윤곽으로 쓸 수 있음). 밧줄은 한 번 그려진 이미지라 수정하려면 폴더를 지우고 다시 만든다
 
 ### 3.2.7 다크 모드
