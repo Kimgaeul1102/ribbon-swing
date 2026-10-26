@@ -137,6 +137,29 @@ type Layer = {
 
 ## 5. 폴더 구조
 
+### 5.0 전체 구조 (멀티 앱)
+프로젝트는 "SD 캐릭터 움짤 공방" — 홈 화면에서 만들 움짤(리본스윙, 마블런, 어항 …)을 고르고 각 앱 화면으로 들어간다. 아이디어 원본은 `new.md`(앱별 프롬프트 명세).
+
+src/
+  main.tsx              # AppRouter만 렌더
+  index.css             # 전역 스타일 (Tailwind, 다크 모드 색 변수)
+  app/
+    apps.ts             # 앱 목록(레지스트리): id/제목/설명/lazy component. 새 앱은 여기에 한 줄 추가
+    AppRouter.tsx       # 주소(#/id)에 맞는 화면: 홈 / 앱 / 준비 중
+  home/                 # 홈 화면 (HomePage, AppCard)
+  shared/               # 앱 공용 (route 해시 라우터, BackToHome, ComingSoon)
+  apps/
+    ribbon-swing/       # 리본스윙 앱 — 아래 5.1 구조가 이 폴더 안에 있음
+    <새앱-id>/          # 앱마다 폴더 하나
+
+- **앱 간 import 금지**: 앱 폴더는 자기 폴더 + `shared/`만 import. 그래서 한 앱 작업 때 그 폴더만 읽으면 됨
+- 앱 진입 컴포넌트는 `apps/<id>/<Name>App.tsx` (default export), `app/apps.ts`에서 `lazy(() => import(...))`로 연결 → 앱별 번들이 나뉨
+- 라우터는 해시 방식(`#/ribbon-swing`)이라 GitHub Pages에서 새로고침해도 안 깨짐
+- 아직 안 만든 앱은 `apps.ts`에 `component` 없이 등록 → 카드에 "준비 중" 표시
+
+### 5.1 리본스윙 앱 (`src/apps/ribbon-swing/`)
+> 아래 경로의 `src/`는 모두 `src/apps/ribbon-swing/`로 읽을 것. 진입점은 `App.tsx`가 `RibbonSwingApp.tsx`로 바뀜. localStorage 키(`ribbon-swing:*`)와 IndexedDB 이름은 그대로.
+
 src/
 main.tsx
 App.tsx
@@ -168,6 +191,50 @@ utils/groups.ts # 레이어 폴더: 자를 영역 계산, 폴더 순서 이동
 utils/trim.ts # 이미지 불투명 영역(bbox) 측정
 store/useLibraryStore.ts # 보관함·세트 (같은 이미지는 해시로 중복 방지)
 
+
+### 5.2 마블런 앱 (`src/apps/marble-run/`)
+명세 원본은 `new.md` 6번. Matter.js(`matter-js`) 사용. 폴더별 역할:
+
+types.ts                # TrackItem/TrackPreset/Character/SimConfig 타입, WORLD_W=600
+track/presets.ts        # 트랙 프리셋 4개 (solo/zigzag/pinball/gauntlet) — 트랙을 고치려면 여기만
+track/buildBodies.ts    # TrackItem → Matter 바디, 시작 위치 seed 배치
+sim/rng.ts              # seed 난수 (mulberry32)
+sim/marbleSim.ts        # createSim/stepSim/ranking (순수 계산, 화면 모름). 고정 1/60초 스텝
+render/                 # camera(따라가기), drawTrack, drawMarbles, drawFinish(1등+색종이), drawScene, confetti, imageCache
+store/useMarbleStore.ts # 캐릭터·프리셋·seed·물리값. 설정이 바뀌면 runId가 올라 시뮬레이션을 새로 만듦
+hooks/useMarbleLoop.ts  # rAF → 고정 스텝 → canvas. 순위는 골인 순서가 바뀔 때만 store에 알림
+components/             # Stage(canvas), Scoreboard, RaceControls, CharacterList, PhysicsSettings, Slider
+
+- **결정론**: 같은 seed + 같은 설정이면 같은 결과. 물리는 `Runner` 없이 `stepSim`으로만 진행 (화면 속도 무관). 시소/바람개비 초기 각도도 seed에서 나옴
+- 캐릭터가 1명이면 `solo` 트랙으로 자동 전환(`buildSimConfig`). 그림이 없으면 색 구슬 + 이름 첫 글자
+- 좌표계: 월드 600 × `preset.worldH`, 화면 논리 크기 600×800(`render/camera.ts`)을 canvas 2배 해상도로 그림
+- **아직 없는 것**(명세에는 있음): 솔로 골인 팝 그림(`{name}_pop.png`)과 루프 보정, WebM 녹화·프레임 덤프, 트랙 편집 모드(드래그/삭제/JSON 출력), 프레임 단위 이동
+
+### 5.3 캐릭터 파츠 루프 앱 5종 (어항 / 택배 박스 / 병조림 선반 / 경찰차 / 액자)
+명세 원본은 `new.md` 1~5번. 전부 **canvas**에 그림(DOM/CSS 아님): 녹화(`captureStream`)와 시간 제어가 쉽고, 장면이 시간 `t`만의 순수 함수라 완벽한 루프가 됨. 앱 폴더 구조는 모두 같음:
+
+apps/<id>/<Name>App.tsx    # <AppShell draw=...> + 파츠 업로더 + 앱 옵션. draw는 모듈 레벨 함수로 매 프레임 getState()를 읽음
+apps/<id>/config.ts        # CONFIG 타입 + 기본값 (new.md의 CONFIG.xxx)
+apps/<id>/store/           # createConfigStore(기본값) — cfg/set/reset
+apps/<id>/scene/motion.ts  # 순수 움직임 함수 (루프 끝=처음인지 테스트) — 움직임을 고치려면 여기
+apps/<id>/scene/draw*.ts   # canvas 그리기 (배경 소품 / 전체 합성)
+apps/<id>/components/      # 앱 전용 설정 패널
+
+공용 코드(`src/shared/`):
+- `loop/` — `useLoopPlayer`(rAF, 재생/일시정지/프레임 이동/녹화), `LoopControls`, `AppShell`(화면 틀), `useLoopSettings`(루프 길이·크기·배경 — 모든 앱 공유), `recorder`(MediaRecorder→WebM), `curves`(wrap/bump/windowProgress/cyclesPerLoop), `rng`(seed 난수), `color`
+- `character/` — 파츠 저장소(`useCharacterStore`, 파일 이름으로 body/head/hair/eyes_open/eyes_closed/mouth/hand_l/hand_r 자동 배정), `drawCharacter`(층별 그리기 + 층별 움직임), `placeholder`(파츠 안 올렸을 때 미리보기용 임시 캐릭터), `PartsUploader`
+- `ui/fields.tsx` — 슬라이더/색/체크/선택/텍스트 입력 부품, `store/createConfigStore.ts`
+
+규칙:
+- 장면은 항상 **600×600 논리 좌표**로 그림. 실제 캔버스 크기(600×600 / 800×600 / 600×800)는 `useLoopPlayer`가 가운데 정렬 + 확대/축소
+- **루프 보정**: 반복 움직임은 `cyclesPerLoop`로 한 루프에 정수 번 들어가게(진동 0.4초·경광등·숨쉬기 등), 한 번만 일어나는 동작은 `windowProgress/bump`(루프 경계를 넘어도 이어짐), 무늬가 흐르는 건 무늬 폭의 정수 배만 이동. 난수는 `makeRng(seed)`만 쓰고 `Math.random` 금지
+- **택배 박스는 순차 등장 방식**: 루프를 캐릭터 수(1~6)로 등분해 칸마다 [왼쪽에서 감속 등장 → 가운데 멈춤(`holdRatio`) → 컨베이어로 가속 퇴장 "슝"]. 1명이면 같은 캐릭터가 계속 나옴. 벨트는 박스와 같은 거리만 이동하고 칸당 이동 거리(`D_ENTER+D_EXIT`)가 무늬 폭의 정수 배라 이음새가 없음. 인원이 바뀌면 루프를 인원×3초로 맞춤(앱을 나가면 원래대로). 칸 계산은 `delivery-box/scene/motion.ts slotAt/slotPose`
+- 파츠 PNG는 **같은 크기 캔버스에서 내보낸 것**이라고 가정(모든 파츠를 같은 위치에 겹침). 층 움직임 기준점(`px`,`py`)은 파츠 캔버스 비율
+- 배경은 기본 투명(체크무늬로 표시). WebM 녹화가 알파를 못 살리는 브라우저가 있어 "배경색 넣기" 옵션 제공
+- **사용자 그림 + 흔들림 레이어**: 파일 이름이 파츠 이름과 맞으면 해당 칸, 아니면 `ExtraLayer`(흔들릴 부분 레이어, 개수 제한 없음)가 됨. 레이어마다 강도(0~3)·지연·속도·기준점·몸 앞/뒤를 설정(`ExtraLayersEditor`), 기본 hair에도 `hairSway`(추가 흔들림)
+- **흔들림 계산**(`shared/character/sway.ts swayMotion`): ① 평소 살랑거림(정수 주기라 루프 이음새 OK) + ② 앱이 넘겨준 몸 움직임 `anim.drive(t)`를 `lag`초 늦게 따라간 차이 × 강도. **새 앱을 만들면 `drawCharacter`의 `anim: { t, loop, drive, base? }`에 그 앱의 몸 움직임(rot/dx/dy)을 꼭 넘길 것** (안 넘기면 레이어가 가만히 그려짐)
+- **저장**: 올린 그림은 IndexedDB(`ribbon-swing-characters`)에 Blob으로, 설정은 같은 DB의 `meta`에 저장돼 새로고침해도 남음(`shared/character/persist.ts`). 서버 전송 없음. 캐릭터는 앱 간에 공유됨
+- **아직 없는 것**: GIF/MP4 저장, 픽셀 위치 드래그 조정(지금은 슬라이더), 파츠 위치 앵커 개별 편집
 
 ## 6. 단계별 작업 순서 (이 순서대로 진행)
 1. Vite + React + TS + Tailwind + Zustand 세팅, 빈 Stage/ControlPanel 배치

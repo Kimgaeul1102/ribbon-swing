@@ -10,6 +10,7 @@ import RibbonPanel from './components/RibbonPanel'
 import ScreenPanel from './components/ScreenPanel'
 import ScenePanel from './components/ScenePanel'
 import ExportPanel from './components/ExportPanel'
+import BackToHome from '../../shared/BackToHome'
 import { useLibraryStore } from './store/useLibraryStore'
 
 const TABS = [
@@ -47,7 +48,7 @@ function loadTab(): TabId {
   return 'layers'
 }
 
-function App() {
+function RibbonSwingApp() {
   const initLibrary = useLibraryStore((s) => s.init)
   const [tab, setTab] = useState<TabId>(loadTab)
   const [dark, setDark] = useState(loadDark)
@@ -61,6 +62,9 @@ function App() {
       /* 무시 */
     }
   }, [dark])
+
+  // 홈 화면으로 나갈 때 다크 모드가 남지 않게 정리
+  useEffect(() => () => document.documentElement.classList.remove('dark'), [])
 
   useEffect(() => {
     void initLibrary()
@@ -83,7 +87,8 @@ function App() {
       {/* 모바일(<768px)에서는 하단 시트, 데스크톱에서는 우측 패널. 위쪽 버튼 줄은 어느 탭에서든 보임 */}
       <aside className="flex max-h-[50%] w-full flex-col border-t border-pink-200 bg-white md:max-h-none md:w-80 md:border-l md:border-t-0">
         <div className="border-b border-pink-100 p-3">
-          <div className="mb-2 flex justify-end">
+          <div className="mb-2 flex items-center justify-between">
+            <BackToHome />
             <button
               type="button"
               role="switch"
@@ -134,4 +139,4 @@ function App() {
   )
 }
 
-export default App
+export default RibbonSwingApp
